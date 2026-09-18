@@ -1,10 +1,14 @@
 # IgG Concentration Builder
 
-Turns a NanoDrop plate export into the concentration workbook used in the
-GlycanAge pipeline: **Well / Sample ID / conc. / units**, colour-coded, with
-the DBS and standard averages at the bottom.
+Paperwork for a GlycanAge plate's day 1 - IgG isolation and the concentration
+measurement that follows it. Two tabs, one plate layout file behind both.
 
-Replaces doing it by hand in Excel.
+| Tab | Produces |
+|---|---|
+| **IgG concentrations** | the concentration workbook: **Well / Sample ID / conc. / units**, colour-coded, with the DBS and standard averages |
+| **List of samples (WS-031)** | a printable companion sheet for GBL-WS-031/07 step 1.3 - the filled 8x12 plate grid and the worksheet numbers taken for the plate |
+
+Replaces doing both by hand.
 
 ## What it does
 
@@ -103,6 +107,33 @@ The exe accepts the same arguments.
 Every PC picks the new version up the next time someone launches it. Because
 the launcher copies to `%LOCALAPPDATA%` and runs from there, you can replace
 the share copy even while colleagues have the app open.
+
+## The worksheet companion sheet
+
+GBL-WS-031/07 is a flat PDF with no form fields, and a controlled document, so
+nothing writes to it. The sheet prints separately and gets attached, the way
+NanoDrop results already are.
+
+It fills what can be derived - the 8x12 sample grid, GA batch no., plasma
+standard names, blank positions, well counts - and carries the six numbers
+taken for the plate:
+
+| Worksheet numbers | Storage numbers (GBL-WS-002) |
+|---|---|
+| `GBL-WS-031/07` IgG isolation | IgG eluate |
+| `GBL-WS-029/04` Deglycosylation + APTS | Dry IgG eluate |
+| `GBL-WS-030/04` HILIC-SPE clean-up | APTS labelled IgG N-glycans |
+
+plus the sample reception and sample storage numbers, which predate the plate.
+
+Collecting them in one place matters because the worksheets quote each other:
+WS-029 asks for the isolation number, WS-030 asks for the deglycosylation
+number. Entered once here, they stay consistent across all three.
+
+Everything the operator must *observe* - shaking and drying times, LOT numbers,
+Protein G plate number and times used, plate labels, signatures - stays on the
+worksheet. Pre-printing a field that should be recorded live would undermine
+the record.
 
 ## Distribution
 

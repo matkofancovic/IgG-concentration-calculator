@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import os
 import re
@@ -25,6 +25,8 @@ try:
     from openpyxl.styles import PatternFill
 except ImportError:
     sys.exit("openpyxl is not installed.  Run:  pip install openpyxl")
+
+import ws031_sheet
 
 
 # ===========================================================================
@@ -124,11 +126,14 @@ def read_nanodrop(path):
     return blocks, rereads
 
 
-def read_layout(path, sheet=None):
+def read_layout(path, sheet=None, keep_filler=False):
     """Read a plate-map sheet -> ({well: sample}, sheet name, conflicts).
 
     Handles both shapes in the pipeline: a single grid ('List 1') and a
     sheet repeating the same grid once per pipetting step ('Plate_layouts').
+
+    keep_filler=True keeps HiDi and similar placeholders.  The worksheet
+    sample list shows them; the concentration workbook ignores them.
     """
     try:
         wb = openpyxl.load_workbook(path, data_only=True)
@@ -164,7 +169,7 @@ def read_layout(path, sheet=None):
             if j >= len(vals) or vals[j] is None:
                 continue
             val = str(vals[j]).strip()
-            if not val or val.lower() in FILLER:
+            if not val or (val.lower() in FILLER and not keep_filler):
                 continue
             well = f"{label}{n}"
             if well in layout and layout[well] != val:
@@ -375,97 +380,41 @@ def build(nanodrop_path, layout_path, out_path, sheet=None,
 #  GUI
 # ===========================================================================
 
-class App(ttk.Frame):
-    def __init__(self, master):
-        super().__init__(master, padding=12)
-        self.grid(sticky="nsew")
-        master.columnconfigure(0, weight=1)
-        master.rowconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
+class FileRow:
+    """Label + entry + Browse, laid out on two grid rows."""
 
-        self.txt_var = tk.StringVar()
-        self.lay_var = tk.StringVar()
-        self.out_var = tk.StringVar()
+    def __init__(self, parent, row, label, var, command):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
+                                           pady=(8, 2), columnspan=3)
+        ttk.Entry(parent, textvariable=var).grid(
+            row=row + 1, column=0, columnspan=2, sticky="ew", padx=(0, 6))
+        ttk.Button(parent, text="Browse...", command=command).grid(row=row + 1, column=2)
+
+
+class ConcTab(ttk.Frame):
+    """NanoDrop export + plate layout -> concentration workbook."""
+
+    def __init__(self, master, app):
+        super().__init__(master, padding=12)
+        self.app = app
+        self.columnconfigure(1, weight=1)
+        self.txt_var, self.lay_var, self.out_var = (tk.StringVar() for _ in range(3))
         self.strict_var = tk.BooleanVar(value=True)
         self.open_var = tk.BooleanVar(value=False)
 
-        r = 0
-        ttk.Label(self, text="NanoDrop concentrations (.txt)").grid(
-            row=r, column=0, sticky="w", pady=(0, 2))
-        r += 1
-        ttk.Entry(self, textvariable=self.txt_var).grid(
-            row=r, column=0, columnspan=2, sticky="ew", padx=(0, 6))
-        ttk.Button(self, text="Browse...", command=self.pick_txt).grid(row=r, column=2)
+        FileRow(self, 0, "NanoDrop concentrations (.txt)", self.txt_var, self.pick_txt)
+        FileRow(self, 2, "Plate layout - Pippeting List (.xlsx)", self.lay_var, self.pick_layout)
+        FileRow(self, 4, "Save workbook as (.xlsx)", self.out_var, self.pick_out)
 
-        r += 1
-        ttk.Label(self, text="Plate layout - Pippeting List (.xlsx)").grid(
-            row=r, column=0, sticky="w", pady=(10, 2))
-        r += 1
-        ttk.Entry(self, textvariable=self.lay_var).grid(
-            row=r, column=0, columnspan=2, sticky="ew", padx=(0, 6))
-        ttk.Button(self, text="Browse...", command=self.pick_layout).grid(row=r, column=2)
-
-        r += 1
-        ttk.Label(self, text="Save result as (.xlsx)").grid(
-            row=r, column=0, sticky="w", pady=(10, 2))
-        r += 1
-        ttk.Entry(self, textvariable=self.out_var).grid(
-            row=r, column=0, columnspan=2, sticky="ew", padx=(0, 6))
-        ttk.Button(self, text="Browse...", command=self.pick_out).grid(row=r, column=2)
-
-        r += 1
         opts = ttk.Frame(self)
-        opts.grid(row=r, column=0, columnspan=3, sticky="w", pady=(12, 0))
+        opts.grid(row=6, column=0, columnspan=3, sticky="w", pady=(12, 0))
         ttk.Checkbutton(opts, text="Stop if the layout does not match the readings",
                         variable=self.strict_var).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(opts, text="Open the file when done",
                         variable=self.open_var).grid(row=1, column=0, sticky="w")
 
-        r += 1
-        btns = ttk.Frame(self)
-        btns.grid(row=r, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        btns.columnconfigure(0, weight=1)
-        self.build_btn = ttk.Button(btns, text="Build workbook", command=self.run)
-        self.build_btn.grid(row=0, column=1, padx=(0, 6))
-        ttk.Button(btns, text="Clear", command=self.clear).grid(row=0, column=2)
-
-        r += 1
-        ttk.Label(self, text="Report").grid(row=r, column=0, sticky="w", pady=(12, 2))
-        r += 1
-        wrap = ttk.Frame(self)
-        wrap.grid(row=r, column=0, columnspan=3, sticky="nsew")
-        self.rowconfigure(r, weight=1)
-        wrap.columnconfigure(0, weight=1)
-        wrap.rowconfigure(0, weight=1)
-        self.log = tk.Text(wrap, height=16, wrap="none", state="disabled",
-                           font=("Consolas", 9))
-        self.log.grid(row=0, column=0, sticky="nsew")
-        sb = ttk.Scrollbar(wrap, orient="vertical", command=self.log.yview)
-        sb.grid(row=0, column=1, sticky="ns")
-        self.log.configure(yscrollcommand=sb.set)
-        self.log.tag_configure("warn", foreground="#b00000")
-        self.log.tag_configure("ok", foreground="#006000")
-
-        r += 1
-        self.status = ttk.Label(self, text="Pick the two files, then press Build.",
-                                anchor="w")
-        self.status.grid(row=r, column=0, columnspan=3, sticky="ew", pady=(8, 0))
-
-    # -- helpers -----------------------------------------------------------
-
-    def say(self, line=""):
-        tag = "warn" if line.strip().startswith("!!") else ""
-        self.log.configure(state="normal")
-        self.log.insert("end", line + "\n", tag)
-        self.log.see("end")
-        self.log.configure(state="disabled")
-        self.update_idletasks()
-
-    def clear(self):
-        self.log.configure(state="normal")
-        self.log.delete("1.0", "end")
-        self.log.configure(state="disabled")
-        self.status.config(text="Cleared.")
+        self.btn = ttk.Button(self, text="Build workbook", command=self.run)
+        self.btn.grid(row=7, column=2, sticky="e", pady=(12, 0))
 
     def pick_txt(self):
         p = filedialog.askopenfilename(
@@ -489,43 +438,214 @@ class App(ttk.Frame):
 
     def pick_out(self):
         p = filedialog.asksaveasfilename(
-            title="Save result as", defaultextension=".xlsx",
+            title="Save workbook as", defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
             initialfile=os.path.basename(self.out_var.get()) or None,
             initialdir=os.path.dirname(self.out_var.get()) or None)
         if p:
             self.out_var.set(p)
 
-    # -- action ------------------------------------------------------------
-
     def run(self):
-        txt, lay, out = (v.get().strip() for v in
-                         (self.txt_var, self.lay_var, self.out_var))
-        if not txt or not lay:
-            messagebox.showwarning("Missing file",
-                                   "Pick both the NanoDrop .txt and the plate layout .xlsx.")
+        txt, lay, out = (v.get().strip() for v in (self.txt_var, self.lay_var, self.out_var))
+        if not (txt and lay and out):
+            messagebox.showwarning(
+                "Missing file",
+                "Pick the NanoDrop .txt, the plate layout .xlsx, and where to save.")
             return
         for label, p in (("NanoDrop", txt), ("Plate layout", lay)):
             if not os.path.isfile(p):
                 messagebox.showerror("Not found", f"{label} file does not exist:\n{p}")
                 return
-        if not out:
-            messagebox.showwarning("Missing output", "Choose where to save the result.")
+        if not self.app.confirm_overwrite(out):
             return
-        if os.path.exists(out) and not messagebox.askyesno(
-                "Overwrite?", f"{os.path.basename(out)} already exists.\n\nOverwrite it?"):
+        self.app.go(self.btn, out, self.open_var.get(),
+                    lambda: build(txt, lay, out, strict=self.strict_var.get(),
+                                  log=self.app.say))
+
+
+class WorksheetTab(ttk.Frame):
+    """Plate layout + worksheet numbers -> printable companion sheet."""
+
+    def __init__(self, master, app):
+        super().__init__(master, padding=12)
+        self.app = app
+        self.columnconfigure(1, weight=1)
+        self.lay_var, self.out_var = tk.StringVar(), tk.StringVar()
+        self.batch_var = tk.StringVar()
+        self.open_var = tk.BooleanVar(value=True)
+        self.num_vars = {}
+
+        FileRow(self, 0, "Plate layout - Pippeting List (.xlsx)", self.lay_var, self.pick_layout)
+        FileRow(self, 2, "Save sheet as (.pdf)", self.out_var, self.pick_out)
+
+        row = ttk.Frame(self)
+        row.grid(row=4, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        ttk.Label(row, text="GA batch No.").grid(row=0, column=0, sticky="w")
+        ttk.Entry(row, textvariable=self.batch_var, width=22).grid(
+            row=0, column=1, sticky="w", padx=(8, 0))
+        ttk.Label(row, text="(filled in from the file name)",
+                  foreground="#666666").grid(row=0, column=2, sticky="w", padx=(8, 0))
+
+        box = ttk.LabelFrame(self, text="Worksheet numbers taken for this plate",
+                             padding=10)
+        box.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        box.columnconfigure(1, weight=1)
+        box.columnconfigure(3, weight=1)
+
+        for i, (key, code, title) in enumerate(ws031_sheet.WORKSHEETS):
+            ttk.Label(box, text=f"{code}  {title}").grid(
+                row=i, column=0, sticky="w", pady=2)
+            v = tk.StringVar()
+            self.num_vars[key] = v
+            ttk.Entry(box, textvariable=v, width=12).grid(
+                row=i, column=1, sticky="w", padx=(10, 24), pady=2)
+
+        ttk.Label(box, text="Storage (GBL-WS-002)", foreground="#666666").grid(
+            row=0, column=2, sticky="w", pady=2)
+        for i, (key, label) in enumerate(ws031_sheet.STORAGE):
+            ttk.Label(box, text=label).grid(row=i + 1, column=2, sticky="w", pady=2)
+            v = tk.StringVar()
+            self.num_vars[key] = v
+            ttk.Entry(box, textvariable=v, width=12).grid(
+                row=i + 1, column=3, sticky="w", padx=(10, 0), pady=2)
+
+        sep = ttk.Frame(self)
+        sep.grid(row=6, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        for i, (key, label) in enumerate((("reception", "Sample reception worksheet no."),
+                                          ("sample_storage", "Sample storage worksheet no."))):
+            ttk.Label(sep, text=label).grid(row=0, column=i * 2, sticky="w", padx=(0, 8))
+            v = tk.StringVar()
+            self.num_vars[key] = v
+            ttk.Entry(sep, textvariable=v, width=12).grid(
+                row=0, column=i * 2 + 1, sticky="w", padx=(0, 28))
+
+        ttk.Checkbutton(self, text="Open the sheet when done",
+                        variable=self.open_var).grid(row=7, column=0, sticky="w",
+                                                     pady=(12, 0))
+        self.btn = ttk.Button(self, text="Build sheet", command=self.run)
+        self.btn.grid(row=7, column=2, sticky="e", pady=(12, 0))
+
+    def pick_layout(self):
+        p = filedialog.askopenfilename(
+            title="Plate layout (Pippeting List)",
+            filetypes=[("Excel files", "*.xlsx *.xlsm"), ("All files", "*.*")],
+            initialdir=os.path.dirname(self.lay_var.get()) or None)
+        if not p:
+            return
+        self.lay_var.set(p)
+        batch = ws031_sheet.batch_from_filename(p)
+        if batch and not self.batch_var.get():
+            self.batch_var.set(batch)
+        if not self.out_var.get():
+            stem = batch or os.path.splitext(os.path.basename(p))[0]
+            self.out_var.set(os.path.join(os.path.dirname(p),
+                                          f"{stem} list of samples.pdf"))
+
+    def pick_out(self):
+        p = filedialog.asksaveasfilename(
+            title="Save sheet as", defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialfile=os.path.basename(self.out_var.get()) or None,
+            initialdir=os.path.dirname(self.out_var.get()) or None)
+        if p:
+            self.out_var.set(p)
+
+    def run(self):
+        lay, out = self.lay_var.get().strip(), self.out_var.get().strip()
+        if not (lay and out):
+            messagebox.showwarning("Missing file",
+                                   "Pick the plate layout .xlsx and where to save.")
+            return
+        if not os.path.isfile(lay):
+            messagebox.showerror("Not found", f"Plate layout does not exist:\n{lay}")
+            return
+        if not self.app.confirm_overwrite(out):
+            return
+        numbers = {k: v.get().strip() for k, v in self.num_vars.items()}
+        blank = [t for k, _, t in ws031_sheet.WORKSHEETS if not numbers.get(k)] + \
+                [s for k, s in ws031_sheet.STORAGE if not numbers.get(k)]
+        if blank and not messagebox.askyesno(
+                "Numbers missing",
+                "No number entered for:\n\n  - " + "\n  - ".join(blank)
+                + "\n\nThe sheet will show a dash there.  Build anyway?"):
             return
 
+        def work():
+            layout, sheet_used, conflicts = read_layout(lay, keep_filler=True)
+            for w, v1, v2 in conflicts[:10]:
+                self.app.say(f"  !! layout conflict {w}: {v1!r} vs {v2!r}")
+            ws031_sheet.build_sample_list_pdf(
+                layout, out, batch=self.batch_var.get().strip(),
+                source_name=os.path.basename(lay), sheet_name=sheet_used,
+                numbers=numbers, log=self.app.say)
+
+        self.app.go(self.btn, out, self.open_var.get(), work)
+
+
+class App(ttk.Frame):
+    def __init__(self, master):
+        super().__init__(master, padding=10)
+        self.grid(sticky="nsew")
+        master.columnconfigure(0, weight=1)
+        master.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        nb = ttk.Notebook(self)
+        nb.grid(row=0, column=0, sticky="ew")
+        self.conc_tab = ConcTab(nb, self)
+        self.ws_tab = WorksheetTab(nb, self)
+        nb.add(self.conc_tab, text="  IgG concentrations  ")
+        nb.add(self.ws_tab, text="  List of samples (WS-031)  ")
+
+        ttk.Label(self, text="Report").grid(row=1, column=0, sticky="w", pady=(12, 2))
+        wrap = ttk.Frame(self)
+        wrap.grid(row=2, column=0, sticky="nsew")
+        wrap.columnconfigure(0, weight=1)
+        wrap.rowconfigure(0, weight=1)
+        self.log = tk.Text(wrap, height=12, wrap="none", state="disabled",
+                           font=("Consolas", 9))
+        self.log.grid(row=0, column=0, sticky="nsew")
+        sb = ttk.Scrollbar(wrap, orient="vertical", command=self.log.yview)
+        sb.grid(row=0, column=1, sticky="ns")
+        self.log.configure(yscrollcommand=sb.set)
+        self.log.tag_configure("warn", foreground="#b00000")
+
+        self.status = ttk.Label(self, text="Pick the files, then press Build.",
+                                anchor="w")
+        self.status.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+
+    # -- shared helpers ----------------------------------------------------
+
+    def say(self, line=""):
+        tag = "warn" if line.strip().startswith("!!") else ""
+        self.log.configure(state="normal")
+        self.log.insert("end", line + "\n", tag)
+        self.log.see("end")
+        self.log.configure(state="disabled")
+        self.update_idletasks()
+
+    def clear(self):
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        self.log.configure(state="disabled")
+
+    def confirm_overwrite(self, path):
+        return not os.path.exists(path) or messagebox.askyesno(
+            "Overwrite?", f"{os.path.basename(path)} already exists.\n\nOverwrite it?")
+
+    def go(self, btn, out, open_after, work):
+        """Run `work`, funnelling errors to the report pane and a dialog."""
         self.clear()
-        self.build_btn.state(["disabled"])
+        btn.state(["disabled"])
         self.status.config(text="Working...")
         try:
-            build(txt, lay, out, strict=self.strict_var.get(), log=self.say)
+            work()
         except BuildError as e:
             self.say("")
             self.say("!! " + str(e).replace("\n", "\n   "))
             self.status.config(text="Not written - see the report.")
-            messagebox.showerror("Could not build the workbook", str(e))
+            messagebox.showerror("Could not build it", str(e))
         except Exception:
             self.say("")
             self.say("!! Unexpected error:")
@@ -533,19 +653,19 @@ class App(ttk.Frame):
             self.status.config(text="Failed - see the report.")
         else:
             self.status.config(text=f"Done - {os.path.basename(out)}")
-            if self.open_var.get():
+            if open_after:
                 try:
-                    os.startfile(out)                    # Windows
+                    os.startfile(out)
                 except Exception as e:
                     self.say(f"  (could not open the file: {e})")
         finally:
-            self.build_btn.state(["!disabled"])
+            btn.state(["!disabled"])
 
 
 def main():
     root = tk.Tk()
     root.title(f"GlycanAge - IgG concentration workbook  v{__version__}")
-    root.minsize(720, 560)
+    root.minsize(860, 720)
     try:
         ttk.Style().theme_use("vista")
     except tk.TclError:
