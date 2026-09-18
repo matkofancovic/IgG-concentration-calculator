@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 import os
 import re
@@ -407,6 +407,16 @@ def build(nanodrop_path, layout_path, out_path, sheet=None,
 #  GUI
 # ===========================================================================
 
+def norm(path):
+    """Windows-native form of a path.
+
+    Tk's file dialogs hand back forward slashes, so a share comes through as
+    //host/share/file.  Python opens that happily but os.startfile and other
+    Windows APIs do not, so every path from a dialog goes through here.
+    """
+    return os.path.normpath(path) if path else path
+
+
 class FileRow:
     """Label + entry + Browse, laid out on two grid rows."""
 
@@ -450,6 +460,7 @@ class ConcTab(ttk.Frame):
             initialdir=os.path.dirname(self.txt_var.get()) or None)
         if not p:
             return
+        p = norm(p)
         self.txt_var.set(p)
         if not self.out_var.get():
             stem = os.path.splitext(os.path.basename(p))[0]
@@ -461,7 +472,7 @@ class ConcTab(ttk.Frame):
             filetypes=[("Excel files", "*.xlsx *.xlsm"), ("All files", "*.*")],
             initialdir=os.path.dirname(self.lay_var.get() or self.txt_var.get()) or None)
         if p:
-            self.lay_var.set(p)
+            self.lay_var.set(norm(p))
 
     def pick_out(self):
         p = filedialog.asksaveasfilename(
@@ -470,10 +481,11 @@ class ConcTab(ttk.Frame):
             initialfile=os.path.basename(self.out_var.get()) or None,
             initialdir=os.path.dirname(self.out_var.get()) or None)
         if p:
-            self.out_var.set(p)
+            self.out_var.set(norm(p))
 
     def run(self):
-        txt, lay, out = (v.get().strip() for v in (self.txt_var, self.lay_var, self.out_var))
+        txt, lay, out = (norm(v.get().strip())
+                         for v in (self.txt_var, self.lay_var, self.out_var))
         if not (txt and lay and out):
             messagebox.showwarning(
                 "Missing file",
@@ -577,7 +589,7 @@ class WorksheetTab(ttk.Frame):
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
             initialdir=os.path.dirname(self.txt_var.get() or self.lay_var.get()) or None)
         if p:
-            self.txt_var.set(p)
+            self.txt_var.set(norm(p))
 
     def pick_layout(self):
         p = filedialog.askopenfilename(
@@ -586,6 +598,7 @@ class WorksheetTab(ttk.Frame):
             initialdir=os.path.dirname(self.lay_var.get()) or None)
         if not p:
             return
+        p = norm(p)
         self.lay_var.set(p)
         batch = ws_sheets.batch_from_path(p)
         if batch and not self.batch_var.get():
@@ -602,10 +615,10 @@ class WorksheetTab(ttk.Frame):
             initialfile=os.path.basename(self.out_var.get()) or None,
             initialdir=os.path.dirname(self.out_var.get()) or None)
         if p:
-            self.out_var.set(p)
+            self.out_var.set(norm(p))
 
     def run(self):
-        lay, out = self.lay_var.get().strip(), self.out_var.get().strip()
+        lay, out = norm(self.lay_var.get().strip()), norm(self.out_var.get().strip())
         if not (lay and out):
             messagebox.showwarning("Missing file",
                                    "Pick the plate layout .xlsx and where to save.")
@@ -626,7 +639,7 @@ class WorksheetTab(ttk.Frame):
                                  "The aliquot volume must be a positive number, "
                                  "e.g. 40.")
             return
-        txt = self.txt_var.get().strip()
+        txt = norm(self.txt_var.get().strip())
         if txt and not os.path.isfile(txt):
             messagebox.showerror("Not found", f"NanoDrop file does not exist:\n{txt}")
             return
@@ -736,7 +749,7 @@ class App(ttk.Frame):
             self.status.config(text=f"Done - {os.path.basename(out)}")
             if open_after:
                 try:
-                    os.startfile(out)
+                    os.startfile(norm(out))
                 except Exception as e:
                     self.say(f"  (could not open the file: {e})")
         finally:
