@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 import os
 import re
