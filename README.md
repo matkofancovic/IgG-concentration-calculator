@@ -108,25 +108,46 @@ Every PC picks the new version up the next time someone launches it. Because
 the launcher copies to `%LOCALAPPDATA%` and runs from there, you can replace
 the share copy even while colleagues have the app open.
 
-## The worksheet companion sheets
+## Filling the worksheets
 
-All three worksheets are flat PDFs with no form fields, and controlled
-documents, so nothing writes to them. The sheets print separately and get
-attached. `GBL-WS-030/04` step 3 says so outright: *"write down the correct
-sample list in the provided table or paste printed table with sample name"*.
+The **Worksheets** tab writes the derivable values straight onto a copy of
+each worksheet PDF - the 8x12 sample grid, GA batch, worksheet and storage
+numbers, the IgG eluate plate label, the average dried IgG - in dark blue, so
+what the program added is obvious against the black original. The blanks on
+the share are never modified.
 
-One page per worksheet, each carrying the filled 8x12 grid plus the numbers
-**that** worksheet asks for:
+Fields are located at run time from the labels printed on the page, not from
+fixed coordinates, so a revised worksheet still fills. Anything that cannot
+be found is reported rather than written into empty space.
 
-| Page | Quotes | Also filled |
-|---|---|---|
-| **IgG isolation** | reception, sample storage, dry sample storage, IgG eluate storage | standards, blanks, IgG eluate plate label |
-| **Deglycosylation** | **isolation no.**, dry sample storage | **average dried IgG** |
-| **Clean up** | **deglycosylation no.**, APTS N-glycan storage | |
+The blank worksheets are discovered in
 
-The worksheets quote each other - WS-029 asks for the isolation number, WS-030
-for the deglycosylation number - so entering the six numbers once here keeps
-all three consistent across the three days.
+    \10.70.119.100\Glikobiologija\SOPs and WS\WSs
+
+by document code, newest revision winning, so a new release is picked up
+without a code change. The folder is editable in the form.
+
+| Worksheet | Filled |
+|---|---|
+| **IgG isolation** | no., date, batch, grid, reception, sample storage, dry sample storage, IgG eluate storage, 1 mL plate label |
+| **Deglycosylation** | no., date, batch, grid, isolation no., dry sample storage, average dried IgG |
+| **Clean up** | no., date, batch, grid, deglycosylation no., APTS N-glycan storage |
+
+Left blank on purpose: shaking and drying times, LOT numbers, Protein G plate
+number and times used, enzyme LOT and reconstitution date, incubation times,
+solution preparation dates, the YES/NO training questions, deviations and
+signatures - everything the operator records as it happens.
+
+Left blank because the format is not known: wwPTFE and 2 mL collection plate
+labels, PCR plate name, wwPTFE 0.2 um and 0.8 mL round-bottom labels.
+
+**Pre-filling a controlled document is a QA decision, not a technical one.**
+Clear it with whoever owns document control before it becomes routine.
+
+### Separate sheet instead
+
+The *Separate sheet to attach* option produces the earlier one-page-per-
+worksheet PDF instead, for when attaching is preferred to filling.
 
 ### GA batch number
 
@@ -136,34 +157,20 @@ the file sits in. A renamed file still resolves.
 
 ### IgG eluate plate label
 
-The label for the 1 mL collection plate on the isolation page:
-
-    <GA batch> IgG eluate ss<IgG eluate storage no.> <date> <initials>
-    999-GA-202609 IgG eluate ss0912 18.09.2026 MF
-
-Parts are dropped cleanly if a field is left blank. The other plate labels on
-the worksheets - wwPTFE, 2 mL collection, PCR plate, 0.8 mL round-bottom - are
-still written by hand.
+    <GA batch> IgG eluate <IgG eluate storage no.> <date> <initials>
+    999-GA-202609 IgG eluate GA3084 18.09.2026 MF
 
 ### Average amount of dried IgG
 
-`GBL-WS-029/04` asks for this as two figures, DBS and plasma:
+Two figures, DBS and plasma:
 
     DBS mean concentration       x aliquot volume  ->  DBS ug
     standards mean concentration x aliquot volume  ->  plasma ug
 
 For GlycanAge the plasma figure is the standards: the three plasma standards
-are the only plasma on the plate.
-
-The aliquot is the volume `GBL-WS-031/07` step 6 dries down, 40 uL by default
-and editable. Give the tab the NanoDrop .txt and both are computed; leave it
-out and the field prints as a dash. The DBS figure uses exactly the wells the
-concentration workbook's `DBS` average uses, so the two always agree.
-
-Everything the operator must *observe* - shaking and drying times, LOT numbers,
-Protein G plate number and times used, plate labels, enzyme LOT, solution
-preparation dates, signatures - stays on the worksheet. Pre-printing a field
-that should be recorded live would undermine the record.
+are the only plasma on the plate. The aliquot is what step 6 of the isolation
+worksheet dries down, 40 uL by default and editable. The DBS figure uses
+exactly the wells the concentration workbook's `DBS` average uses.
 
 ## Distribution
 
