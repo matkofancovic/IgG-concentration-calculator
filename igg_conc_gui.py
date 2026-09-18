@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import os
 import re
@@ -26,7 +26,7 @@ try:
 except ImportError:
     sys.exit("openpyxl is not installed.  Run:  pip install openpyxl")
 
-import ws031_sheet
+import ws_sheets
 
 
 # ===========================================================================
@@ -207,6 +207,33 @@ def compact(rows):
         out.append(f"C{rows[i]}" if i == j else f"C{rows[i]}:C{rows[j]}")
         i = j + 1
     return ",".join(out)
+
+
+def mean_concentrations(nanodrop_path, layout, plate=None):
+    """-> (dbs_mean, standards_mean) in mg/ml, from a NanoDrop export.
+
+    DBS is the mean of the sample wells; standards is the mean of every
+    standard well pooled.  Blanks and unmapped wells are excluded from both.
+    """
+    blocks, _ = read_nanodrop(nanodrop_path)
+    wells = blocks[(plate - 1) if plate else pick_block(blocks, layout)]
+    dbs, std = [], []
+    for w, rec in wells.items():
+        name = layout.get(w)
+        # layout may have been read with keep_filler=True for the worksheet
+        # grid; HiDi wells hold no IgG and must not enter either mean
+        if not name or rec["conc"] is None or name.lower() in FILLER:
+            continue
+        kind, _ = classify(name)
+        if kind == "sample":
+            dbs.append(rec["conc"])
+        elif kind == "standard":
+            std.append(rec["conc"])
+    if not dbs and not std:
+        raise BuildError("No sample or standard wells matched the layout - "
+                         "is this the right NanoDrop file for this plate?")
+    return (sum(dbs) / len(dbs) if dbs else None,
+            sum(std) / len(std) if std else None)
 
 
 def validate(layout, wells, stand_groups):
@@ -475,24 +502,40 @@ class WorksheetTab(ttk.Frame):
         self.open_var = tk.BooleanVar(value=True)
         self.num_vars = {}
 
+        self.txt_var = tk.StringVar()
+        self.aliquot_var = tk.StringVar(value="40")
+        self.page_vars = {k: tk.BooleanVar(value=True)
+                          for k, _, _ in ws_sheets.WORKSHEETS}
+
         FileRow(self, 0, "Plate layout - Pippeting List (.xlsx)", self.lay_var, self.pick_layout)
-        FileRow(self, 2, "Save sheet as (.pdf)", self.out_var, self.pick_out)
+        FileRow(self, 2, "NanoDrop concentrations (.txt)  -  optional, for the "
+                         "average dried IgG on GBL-WS-029/04", self.txt_var, self.pick_txt)
+        FileRow(self, 4, "Save sheet as (.pdf)", self.out_var, self.pick_out)
 
         row = ttk.Frame(self)
-        row.grid(row=4, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        row.grid(row=6, column=0, columnspan=3, sticky="w", pady=(10, 0))
         ttk.Label(row, text="GA batch No.").grid(row=0, column=0, sticky="w")
-        ttk.Entry(row, textvariable=self.batch_var, width=22).grid(
-            row=0, column=1, sticky="w", padx=(8, 0))
-        ttk.Label(row, text="(filled in from the file name)",
-                  foreground="#666666").grid(row=0, column=2, sticky="w", padx=(8, 0))
+        ttk.Entry(row, textvariable=self.batch_var, width=20).grid(
+            row=0, column=1, sticky="w", padx=(8, 20))
+        ttk.Label(row, text="Aliquot dried down").grid(row=0, column=2, sticky="w")
+        ttk.Entry(row, textvariable=self.aliquot_var, width=6).grid(
+            row=0, column=3, sticky="w", padx=(8, 2))
+        ttk.Label(row, text="µL", foreground="#666666").grid(row=0, column=4, sticky="w")
+
+        pages = ttk.Frame(self)
+        pages.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(pages, text="Pages:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        for i, (key, code, _) in enumerate(ws_sheets.WORKSHEETS):
+            ttk.Checkbutton(pages, text=code, variable=self.page_vars[key]).grid(
+                row=0, column=i + 1, sticky="w", padx=(0, 14))
 
         box = ttk.LabelFrame(self, text="Worksheet numbers taken for this plate",
                              padding=10)
-        box.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(12, 0))
+        box.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         box.columnconfigure(1, weight=1)
         box.columnconfigure(3, weight=1)
 
-        for i, (key, code, title) in enumerate(ws031_sheet.WORKSHEETS):
+        for i, (key, code, title) in enumerate(ws_sheets.WORKSHEETS):
             ttk.Label(box, text=f"{code}  {title}").grid(
                 row=i, column=0, sticky="w", pady=2)
             v = tk.StringVar()
@@ -502,7 +545,7 @@ class WorksheetTab(ttk.Frame):
 
         ttk.Label(box, text="Storage (GBL-WS-002)", foreground="#666666").grid(
             row=0, column=2, sticky="w", pady=2)
-        for i, (key, label) in enumerate(ws031_sheet.STORAGE):
+        for i, (key, label) in enumerate(ws_sheets.STORAGE):
             ttk.Label(box, text=label).grid(row=i + 1, column=2, sticky="w", pady=2)
             v = tk.StringVar()
             self.num_vars[key] = v
@@ -510,7 +553,7 @@ class WorksheetTab(ttk.Frame):
                 row=i + 1, column=3, sticky="w", padx=(10, 0), pady=2)
 
         sep = ttk.Frame(self)
-        sep.grid(row=6, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        sep.grid(row=9, column=0, columnspan=3, sticky="w", pady=(8, 0))
         for i, (key, label) in enumerate((("reception", "Sample reception worksheet no."),
                                           ("sample_storage", "Sample storage worksheet no."))):
             ttk.Label(sep, text=label).grid(row=0, column=i * 2, sticky="w", padx=(0, 8))
@@ -520,10 +563,18 @@ class WorksheetTab(ttk.Frame):
                 row=0, column=i * 2 + 1, sticky="w", padx=(0, 28))
 
         ttk.Checkbutton(self, text="Open the sheet when done",
-                        variable=self.open_var).grid(row=7, column=0, sticky="w",
+                        variable=self.open_var).grid(row=10, column=0, sticky="w",
                                                      pady=(12, 0))
-        self.btn = ttk.Button(self, text="Build sheet", command=self.run)
-        self.btn.grid(row=7, column=2, sticky="e", pady=(12, 0))
+        self.btn = ttk.Button(self, text="Build sheets", command=self.run)
+        self.btn.grid(row=10, column=2, sticky="e", pady=(12, 0))
+
+    def pick_txt(self):
+        p = filedialog.askopenfilename(
+            title="NanoDrop concentrations (optional)",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            initialdir=os.path.dirname(self.txt_var.get() or self.lay_var.get()) or None)
+        if p:
+            self.txt_var.set(p)
 
     def pick_layout(self):
         p = filedialog.askopenfilename(
@@ -533,7 +584,7 @@ class WorksheetTab(ttk.Frame):
         if not p:
             return
         self.lay_var.set(p)
-        batch = ws031_sheet.batch_from_filename(p)
+        batch = ws_sheets.batch_from_filename(p)
         if batch and not self.batch_var.get():
             self.batch_var.set(batch)
         if not self.out_var.get():
@@ -559,11 +610,30 @@ class WorksheetTab(ttk.Frame):
         if not os.path.isfile(lay):
             messagebox.showerror("Not found", f"Plate layout does not exist:\n{lay}")
             return
+        chosen = [k for k, v in self.page_vars.items() if v.get()]
+        if not chosen:
+            messagebox.showwarning("No pages", "Tick at least one worksheet page.")
+            return
+        try:
+            aliquot = float(self.aliquot_var.get().strip().replace(",", "."))
+            if aliquot <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Aliquot volume",
+                                 "The aliquot volume must be a positive number, "
+                                 "e.g. 40.")
+            return
+        txt = self.txt_var.get().strip()
+        if txt and not os.path.isfile(txt):
+            messagebox.showerror("Not found", f"NanoDrop file does not exist:\n{txt}")
+            return
         if not self.app.confirm_overwrite(out):
             return
+
         numbers = {k: v.get().strip() for k, v in self.num_vars.items()}
-        blank = [t for k, _, t in ws031_sheet.WORKSHEETS if not numbers.get(k)] + \
-                [s for k, s in ws031_sheet.STORAGE if not numbers.get(k)]
+        blank = [t for k, _, t in ws_sheets.WORKSHEETS
+                 if k in chosen and not numbers.get(k)] + \
+                [s for k, s in ws_sheets.STORAGE if not numbers.get(k)]
         if blank and not messagebox.askyesno(
                 "Numbers missing",
                 "No number entered for:\n\n  - " + "\n  - ".join(blank)
@@ -574,10 +644,17 @@ class WorksheetTab(ttk.Frame):
             layout, sheet_used, conflicts = read_layout(lay, keep_filler=True)
             for w, v1, v2 in conflicts[:10]:
                 self.app.say(f"  !! layout conflict {w}: {v1!r} vs {v2!r}")
-            ws031_sheet.build_sample_list_pdf(
+            avg = None
+            if txt:
+                avg = mean_concentrations(txt, layout)
+            elif "deglyco" in chosen:
+                self.app.say("  !! no NanoDrop file given - the average dried IgG "
+                             "on GBL-WS-029/04 will be blank")
+            ws_sheets.build_worksheet_pack(
                 layout, out, batch=self.batch_var.get().strip(),
                 source_name=os.path.basename(lay), sheet_name=sheet_used,
-                numbers=numbers, log=self.app.say)
+                numbers=numbers, avg_conc=avg, aliquot_ul=aliquot,
+                pages=chosen, log=self.app.say)
 
         self.app.go(self.btn, out, self.open_var.get(), work)
 
@@ -596,7 +673,7 @@ class App(ttk.Frame):
         self.conc_tab = ConcTab(nb, self)
         self.ws_tab = WorksheetTab(nb, self)
         nb.add(self.conc_tab, text="  IgG concentrations  ")
-        nb.add(self.ws_tab, text="  List of samples (WS-031)  ")
+        nb.add(self.ws_tab, text="  Worksheet sheets  ")
 
         ttk.Label(self, text="Report").grid(row=1, column=0, sticky="w", pady=(12, 2))
         wrap = ttk.Frame(self)

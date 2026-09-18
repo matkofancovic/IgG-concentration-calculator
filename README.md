@@ -108,32 +108,42 @@ Every PC picks the new version up the next time someone launches it. Because
 the launcher copies to `%LOCALAPPDATA%` and runs from there, you can replace
 the share copy even while colleagues have the app open.
 
-## The worksheet companion sheet
+## The worksheet companion sheets
 
-GBL-WS-031/07 is a flat PDF with no form fields, and a controlled document, so
-nothing writes to it. The sheet prints separately and gets attached, the way
-NanoDrop results already are.
+All three worksheets are flat PDFs with no form fields, and controlled
+documents, so nothing writes to them. The sheets print separately and get
+attached. `GBL-WS-030/04` step 3 says so outright: *"write down the correct
+sample list in the provided table or paste printed table with sample name"*.
 
-It fills what can be derived - the 8x12 sample grid, GA batch no., plasma
-standard names, blank positions, well counts - and carries the six numbers
-taken for the plate:
+One page per worksheet, each carrying the filled 8x12 grid plus the numbers
+**that** worksheet asks for:
 
-| Worksheet numbers | Storage numbers (GBL-WS-002) |
-|---|---|
-| `GBL-WS-031/07` IgG isolation | IgG eluate |
-| `GBL-WS-029/04` Deglycosylation + APTS | Dry IgG eluate |
-| `GBL-WS-030/04` HILIC-SPE clean-up | APTS labelled IgG N-glycans |
+| Page | Quotes | Also filled |
+|---|---|---|
+| `GBL-WS-031/07` isolation | reception, sample storage, dry sample storage, IgG eluate storage | standards, blank positions |
+| `GBL-WS-029/04` deglycosylation | **isolation no.**, dry sample storage | **average dried IgG** |
+| `GBL-WS-030/04` clean-up | **deglycosylation no.**, APTS N-glycan storage | |
 
-plus the sample reception and sample storage numbers, which predate the plate.
+The worksheets quote each other - WS-029 asks for the isolation number, WS-030
+for the deglycosylation number - so entering the six numbers once here keeps
+all three consistent across the three days.
 
-Collecting them in one place matters because the worksheets quote each other:
-WS-029 asks for the isolation number, WS-030 asks for the deglycosylation
-number. Entered once here, they stay consistent across all three.
+### Average amount of dried IgG
+
+`GBL-WS-029/04` asks for this as two figures, DBS and plasma:
+
+    DBS mean concentration       x aliquot volume  ->  DBS ug
+    standards mean concentration x aliquot volume  ->  plasma ug
+
+The aliquot is the volume `GBL-WS-031/07` step 6 dries down, 40 uL by default
+and editable. Give the tab the NanoDrop .txt and both are computed; leave it
+out and the field prints as a dash. The DBS figure uses exactly the wells the
+concentration workbook's `DBS` average uses, so the two always agree.
 
 Everything the operator must *observe* - shaking and drying times, LOT numbers,
-Protein G plate number and times used, plate labels, signatures - stays on the
-worksheet. Pre-printing a field that should be recorded live would undermine
-the record.
+Protein G plate number and times used, plate labels, enzyme LOT, solution
+preparation dates, signatures - stays on the worksheet. Pre-printing a field
+that should be recorded live would undermine the record.
 
 ## Distribution
 
