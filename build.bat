@@ -23,7 +23,6 @@ python -m PyInstaller ^
   --exclude-module numpy ^
   --exclude-module pandas ^
   --exclude-module matplotlib ^
-  --exclude-module PIL ^
   --exclude-module PyQt5 ^
   --exclude-module scipy ^
   --noconfirm --clean ^

@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 import os
 import re
@@ -751,14 +751,53 @@ def main():
     root.mainloop()
 
 
+USAGE = """Batch use:
+
+  workbook:  <nanodrop.txt> <layout.xlsx> <output.xlsx> [--lenient]
+  sheets:    --sheets <layout.xlsx> <output.pdf> [--nanodrop <file.txt>]
+                      [--aliquot 40] [--pages isolation,deglyco,cleanup]
+
+With no arguments the window opens instead."""
+
+
+def _opt(argv, name, default=None):
+    """Value of '--name x', or default."""
+    return argv[argv.index(name) + 1] if name in argv and \
+        argv.index(name) + 1 < len(argv) else default
+
+
 def cli(argv):
-    """Batch mode:  <nanodrop.txt> <layout.xlsx> <output.xlsx> [--lenient]"""
-    args = [a for a in argv if not a.startswith("--")]
-    if len(args) != 3:
-        print(__doc__)
-        print("Batch use:  <nanodrop.txt> <layout.xlsx> <output.xlsx> [--lenient]")
-        return 2
+    """Batch mode - see USAGE."""
     try:
+        if "--sheets" in argv:
+            nd = _opt(argv, "--nanodrop")
+            consumed = {"--nanodrop", "--aliquot", "--pages"}
+            skip = {argv[argv.index(o) + 1] for o in consumed
+                    if o in argv and argv.index(o) + 1 < len(argv)}
+            args = [a for a in argv
+                    if not a.startswith("--") and a not in skip]
+            if len(args) != 2:
+                print(USAGE)
+                return 2
+            layout_path, out = args
+            pages = (_opt(argv, "--pages") or "").split(",") if \
+                _opt(argv, "--pages") else None
+            layout, sheet_used, _ = read_layout(layout_path, keep_filler=True)
+            avg = mean_concentrations(nd, layout) if nd else None
+            ws_sheets.build_worksheet_pack(
+                layout, out,
+                batch=ws_sheets.batch_from_filename(layout_path),
+                source_name=os.path.basename(layout_path),
+                sheet_name=sheet_used, avg_conc=avg,
+                aliquot_ul=float(_opt(argv, "--aliquot", 40)),
+                pages=[p.strip() for p in pages] if pages else None)
+            return 0
+
+        args = [a for a in argv if not a.startswith("--")]
+        if len(args) != 3:
+            print(__doc__)
+            print(USAGE)
+            return 2
         build(*args, strict="--lenient" not in argv)
     except BuildError as e:
         print(f"\nERROR: {e}", file=sys.stderr)
