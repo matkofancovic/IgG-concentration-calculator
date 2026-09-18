@@ -1,0 +1,22 @@
+# --- PyInstaller build output (the exe is distributed via the share) ---
+build/
+dist/
+*.spec
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Lab data: NEVER commit these. -------------------------------------
+# NanoDrop exports and plate layouts carry participant sample IDs and
+# belong on the Glikobiologija share, not in git.
+*.txt
+*.xlsx
+*.xlsm
+*.csv
+!requirements.txt
+
+# --- Excel lock files ---
+~$*
