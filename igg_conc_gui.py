@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 import os
 import re
@@ -504,6 +504,7 @@ class WorksheetTab(ttk.Frame):
 
         self.txt_var = tk.StringVar()
         self.aliquot_var = tk.StringVar(value="40")
+        self.initials_var = tk.StringVar()
         self.page_vars = {k: tk.BooleanVar(value=True)
                           for k, _, _ in ws_sheets.WORKSHEETS}
 
@@ -517,16 +518,19 @@ class WorksheetTab(ttk.Frame):
         ttk.Label(row, text="GA batch No.").grid(row=0, column=0, sticky="w")
         ttk.Entry(row, textvariable=self.batch_var, width=20).grid(
             row=0, column=1, sticky="w", padx=(8, 20))
-        ttk.Label(row, text="Aliquot dried down").grid(row=0, column=2, sticky="w")
+        ttk.Label(row, text="Analyst initials").grid(row=0, column=2, sticky="w")
+        ttk.Entry(row, textvariable=self.initials_var, width=6).grid(
+            row=0, column=3, sticky="w", padx=(8, 20))
+        ttk.Label(row, text="Aliquot dried down").grid(row=0, column=4, sticky="w")
         ttk.Entry(row, textvariable=self.aliquot_var, width=6).grid(
-            row=0, column=3, sticky="w", padx=(8, 2))
-        ttk.Label(row, text="µL", foreground="#666666").grid(row=0, column=4, sticky="w")
+            row=0, column=5, sticky="w", padx=(8, 2))
+        ttk.Label(row, text="µL", foreground="#666666").grid(row=0, column=6, sticky="w")
 
         pages = ttk.Frame(self)
         pages.grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Label(pages, text="Pages:").grid(row=0, column=0, sticky="w", padx=(0, 6))
-        for i, (key, code, _) in enumerate(ws_sheets.WORKSHEETS):
-            ttk.Checkbutton(pages, text=code, variable=self.page_vars[key]).grid(
+        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
+            ttk.Checkbutton(pages, text=name, variable=self.page_vars[key]).grid(
                 row=0, column=i + 1, sticky="w", padx=(0, 14))
 
         box = ttk.LabelFrame(self, text="Worksheet numbers taken for this plate",
@@ -535,9 +539,8 @@ class WorksheetTab(ttk.Frame):
         box.columnconfigure(1, weight=1)
         box.columnconfigure(3, weight=1)
 
-        for i, (key, code, title) in enumerate(ws_sheets.WORKSHEETS):
-            ttk.Label(box, text=f"{code}  {title}").grid(
-                row=i, column=0, sticky="w", pady=2)
+        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
+            ttk.Label(box, text=name).grid(row=i, column=0, sticky="w", pady=2)
             v = tk.StringVar()
             self.num_vars[key] = v
             ttk.Entry(box, textvariable=v, width=12).grid(
@@ -584,7 +587,7 @@ class WorksheetTab(ttk.Frame):
         if not p:
             return
         self.lay_var.set(p)
-        batch = ws_sheets.batch_from_filename(p)
+        batch = ws_sheets.batch_from_path(p)
         if batch and not self.batch_var.get():
             self.batch_var.set(batch)
         if not self.out_var.get():
@@ -631,7 +634,7 @@ class WorksheetTab(ttk.Frame):
             return
 
         numbers = {k: v.get().strip() for k, v in self.num_vars.items()}
-        blank = [t for k, _, t in ws_sheets.WORKSHEETS
+        blank = [n for k, _, n in ws_sheets.WORKSHEETS
                  if k in chosen and not numbers.get(k)] + \
                 [s for k, s in ws_sheets.STORAGE if not numbers.get(k)]
         if blank and not messagebox.askyesno(
@@ -654,7 +657,8 @@ class WorksheetTab(ttk.Frame):
                 layout, out, batch=self.batch_var.get().strip(),
                 source_name=os.path.basename(lay), sheet_name=sheet_used,
                 numbers=numbers, avg_conc=avg, aliquot_ul=aliquot,
-                pages=chosen, log=self.app.say)
+                pages=chosen, initials=self.initials_var.get().strip().upper(),
+                log=self.app.say)
 
         self.app.go(self.btn, out, self.open_var.get(), work)
 
@@ -756,6 +760,7 @@ USAGE = """Batch use:
   workbook:  <nanodrop.txt> <layout.xlsx> <output.xlsx> [--lenient]
   sheets:    --sheets <layout.xlsx> <output.pdf> [--nanodrop <file.txt>]
                       [--aliquot 40] [--pages isolation,deglyco,cleanup]
+                      [--initials MF]
 
 With no arguments the window opens instead."""
 
@@ -771,7 +776,7 @@ def cli(argv):
     try:
         if "--sheets" in argv:
             nd = _opt(argv, "--nanodrop")
-            consumed = {"--nanodrop", "--aliquot", "--pages"}
+            consumed = {"--nanodrop", "--aliquot", "--pages", "--initials"}
             skip = {argv[argv.index(o) + 1] for o in consumed
                     if o in argv and argv.index(o) + 1 < len(argv)}
             args = [a for a in argv
@@ -786,10 +791,11 @@ def cli(argv):
             avg = mean_concentrations(nd, layout) if nd else None
             ws_sheets.build_worksheet_pack(
                 layout, out,
-                batch=ws_sheets.batch_from_filename(layout_path),
+                batch=ws_sheets.batch_from_path(layout_path),
                 source_name=os.path.basename(layout_path),
                 sheet_name=sheet_used, avg_conc=avg,
                 aliquot_ul=float(_opt(argv, "--aliquot", 40)),
+                initials=(_opt(argv, "--initials") or "").upper(),
                 pages=[p.strip() for p in pages] if pages else None)
             return 0
 

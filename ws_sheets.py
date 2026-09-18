@@ -42,9 +42,9 @@ FILLER_NAMES = {"hidi", "hi-di", "formamide"}
 # The three worksheets a plate runs through.  The number taken for each is
 # quoted by the next one, which is why they are collected in one place.
 WORKSHEETS = [
-    ("isolation", "GBL-WS-031/07", "IgG isolation (DBS/plasma)"),
-    ("deglyco",   "GBL-WS-029/04", "Deglycosylation + APTS labelling"),
-    ("cleanup",   "GBL-WS-030/04", "HILIC-SPE clean-up + ABI3500"),
+    ("isolation", "GBL-WS-031/07", "IgG isolation"),
+    ("deglyco",   "GBL-WS-029/04", "Deglycosylation"),
+    ("cleanup",   "GBL-WS-030/04", "Clean up"),
 ]
 # The three GBL-WS-002 storage numbers taken for a plate - one per output.
 STORAGE = [
@@ -57,15 +57,18 @@ STORAGE = [
 PAGES = [
     {
         "key": "isolation", "code": "GBL-WS-031/07", "step": "step 1.3",
+        "name": "IgG isolation",
         "title": "IgG isolation from DBS and plasma",
         "refs": [("reception",      "Sample reception worksheet no."),
                  ("sample_storage", "Sample storage worksheet no."),
                  ("dry_eluate",     "Dry sample storage worksheet no."),
                  ("eluate",         "IgG eluate storage worksheet no.")],
         "show_plate_detail": True,
+        "show_plate_label": True,
     },
     {
         "key": "deglyco", "code": "GBL-WS-029/04", "step": "step 1",
+        "name": "Deglycosylation",
         "title": "In solution deglycosylation and APTS labelling",
         "refs": [("isolation",  "IgG isolation worksheet no."),
                  ("dry_eluate", "Dry sample storage worksheet no.")],
@@ -73,6 +76,7 @@ PAGES = [
     },
     {
         "key": "cleanup", "code": "GBL-WS-030/04", "step": "step 3",
+        "name": "Clean up",
         "title": "HILIC-SPE clean-up for CGE-LIF and ABI3500 run",
         "refs": [("deglyco", "In solution deglycosylation and APTS "
                              "labelling worksheet no."),
@@ -97,10 +101,47 @@ def classify_cell(name):
     return "sample", None
 
 
-def batch_from_filename(path):
-    """'999-GA-202609 Pippeting List.xlsx' -> '999-GA-202609'"""
-    m = re.match(r"([0-9]+[-_]GA[-_][0-9]+)", os.path.basename(path), re.I)
-    return m.group(1) if m else ""
+BATCH_RE = re.compile(r"([0-9]+[-_]GA[-_][0-9]{4,6})", re.I)
+
+
+def batch_from_path(path):
+    """Work out the GA batch from where the layout file lives.
+
+    The batch is not stored in any cell of the Pippeting List, so it comes
+    from the file name ('999-GA-202609 Pippeting List.xlsx') and, failing
+    that, from the plate folder the file sits in ('999-GA-202609').
+    """
+    path = os.path.abspath(path)
+    candidates = [os.path.basename(path)]
+    d = os.path.dirname(path)
+    for _ in range(2):                      # plate folder, then its parent
+        candidates.append(os.path.basename(d))
+        d = os.path.dirname(d)
+    for c in candidates:
+        m = BATCH_RE.match(c) or BATCH_RE.search(c)
+        if m:
+            return m.group(1)
+    return ""
+
+
+# kept so older callers keep working
+batch_from_filename = batch_from_path
+
+
+def plate_label(batch, storage_no, date, initials):
+    """'999-GA-202609 IgG eluate ss0912 18.09.2026 MF'
+
+    The label written on the 1 mL collection plate that holds the IgG
+    eluate: batch, what is in it, the storage sheet number it is logged
+    under, the date, and who did it.
+    """
+    bits = [batch or "", "IgG eluate"]
+    if storage_no:
+        bits.append(f"ss{storage_no}")
+    bits.append(date.strftime("%d.%m.%Y"))
+    if initials:
+        bits.append(initials)
+    return " ".join(b for b in bits if b)
 
 
 def summarise(layout):
@@ -180,14 +221,15 @@ def _grid(layout, ncols):
 
 
 def _page(cfg, layout, info, batch, numbers, date, avg_conc, aliquot_ul,
-          source_name, sheet_name, st):
+          source_name, sheet_name, initials, st):
     """Flowables for one worksheet's companion page."""
     def val(k):
         return numbers.get(k) or "—"
 
     story = [
-        Paragraph(f"List of samples &mdash; {cfg['code']}, {cfg['step']}", st["h1"]),
-        Paragraph(f"{cfg['title']} &nbsp;&middot;&nbsp; companion sheet, attach to "
+        Paragraph(f"{cfg['name']} &mdash; list of samples", st["h1"]),
+        Paragraph(f"{cfg['title']}, {cfg['step']} &nbsp;&middot;&nbsp; companion "
+                  f"sheet for <font color='#888888'>{cfg['code']}</font>, attach to "
                   "the worksheet. The worksheet itself is the controlled record.",
                   st["sub"]),
         Spacer(1, 3.5 * mm),
@@ -195,9 +237,9 @@ def _page(cfg, layout, info, batch, numbers, date, avg_conc, aliquot_ul,
 
     # ---- identifying details --------------------------------------------
     head = [["GA batch No.:", batch or "—",
-             f"{cfg['code']} No.:", val(cfg["key"]),
+             f"{cfg['name']} no.:", val(cfg["key"]),
              "Date:", date.strftime("%d.%m.%Y"),
-             "Operator:", ""]]
+             "Analyst:", initials or ""]]
     t = Table(head, colWidths=[24 * mm, 36 * mm, 30 * mm, 24 * mm,
                                14 * mm, 24 * mm, 20 * mm, 30 * mm])
     t.setStyle(TableStyle([
@@ -251,6 +293,22 @@ def _page(cfg, layout, info, batch, numbers, date, avg_conc, aliquot_ul,
     story += [rt, Spacer(1, 3 * mm)]
 
     # ---- plate detail, only where the worksheet asks for it -------------
+    if cfg.get("show_plate_label"):
+        lbl = plate_label(batch, numbers.get("eluate"), date, initials)
+        pl = Table([["1 mL collection plate label:", Paragraph(
+            f"<font face='Helvetica-Bold' size='9'>{lbl}</font>", st["small"])]],
+            colWidths=[38 * mm, 138 * mm])
+        pl.setStyle(TableStyle([
+            ("FONT", (0, 0), (0, 0), "Helvetica-Bold", 7.5),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F7F7")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#999999")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story += [pl, Spacer(1, 2.5 * mm)]
+
     if cfg.get("show_plate_detail"):
         std_names = ", ".join(sorted(info["stands"])) or "—"
         blank_txt = ", ".join(f"{w} ({layout[w]})"
@@ -304,7 +362,8 @@ def _page(cfg, layout, info, batch, numbers, date, avg_conc, aliquot_ul,
 
 def build_worksheet_pack(layout, out_path, batch="", source_name="",
                          sheet_name="", numbers=None, avg_conc=None,
-                         aliquot_ul=40.0, pages=None, date=None, log=print):
+                         aliquot_ul=40.0, pages=None, date=None, initials="",
+                         log=print):
     """Render one companion page per selected worksheet into a single PDF.
 
     avg_conc is (dbs_mean, standards_mean) in mg/ml.  Times the aliquot
@@ -333,12 +392,16 @@ def build_worksheet_pack(layout, out_path, batch="", source_name="",
         if i:
             story.append(PageBreak())
         story += _page(cfg, layout, info, batch, numbers, date,
-                       avg_conc, aliquot_ul, source_name, sheet_name, st)
+                       avg_conc, aliquot_ul, source_name, sheet_name,
+                       initials, st)
     doc.build(story)
 
     # ---- report ----------------------------------------------------------
     log(f"Pages             : {len(chosen)}  ("
-        + ", ".join(c["code"] for c in chosen) + ")")
+        + ", ".join(c["name"] for c in chosen) + ")")
+    if any(c.get("show_plate_label") for c in chosen):
+        log("IgG eluate label  : "
+            + plate_label(batch, numbers.get("eluate"), date, initials))
     log(f"Wells on the grid : {len(layout)}")
     log(f"Samples           : {len(info['samples'])}  ({len(info['donors'])} donors)")
     log("Standards         : " + ", ".join(f"{g} ({len(w)})"

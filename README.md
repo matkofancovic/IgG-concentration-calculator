@@ -120,13 +120,30 @@ One page per worksheet, each carrying the filled 8x12 grid plus the numbers
 
 | Page | Quotes | Also filled |
 |---|---|---|
-| `GBL-WS-031/07` isolation | reception, sample storage, dry sample storage, IgG eluate storage | standards, blank positions |
-| `GBL-WS-029/04` deglycosylation | **isolation no.**, dry sample storage | **average dried IgG** |
-| `GBL-WS-030/04` clean-up | **deglycosylation no.**, APTS N-glycan storage | |
+| **IgG isolation** | reception, sample storage, dry sample storage, IgG eluate storage | standards, blanks, IgG eluate plate label |
+| **Deglycosylation** | **isolation no.**, dry sample storage | **average dried IgG** |
+| **Clean up** | **deglycosylation no.**, APTS N-glycan storage | |
 
 The worksheets quote each other - WS-029 asks for the isolation number, WS-030
 for the deglycosylation number - so entering the six numbers once here keeps
 all three consistent across the three days.
+
+### GA batch number
+
+Not stored in any cell of the Pippeting List, so it is read from the file name
+(`999-GA-202609 Pippeting List.xlsx`) and, failing that, from the plate folder
+the file sits in. A renamed file still resolves.
+
+### IgG eluate plate label
+
+The label for the 1 mL collection plate on the isolation page:
+
+    <GA batch> IgG eluate ss<IgG eluate storage no.> <date> <initials>
+    999-GA-202609 IgG eluate ss0912 18.09.2026 MF
+
+Parts are dropped cleanly if a field is left blank. The other plate labels on
+the worksheets - wwPTFE, 2 mL collection, PCR plate, 0.8 mL round-bottom - are
+still written by hand.
 
 ### Average amount of dried IgG
 
@@ -134,6 +151,9 @@ all three consistent across the three days.
 
     DBS mean concentration       x aliquot volume  ->  DBS ug
     standards mean concentration x aliquot volume  ->  plasma ug
+
+For GlycanAge the plasma figure is the standards: the three plasma standards
+are the only plasma on the plate.
 
 The aliquot is the volume `GBL-WS-031/07` step 6 dries down, 40 uL by default
 and editable. Give the tab the NanoDrop .txt and both are computed; leave it
