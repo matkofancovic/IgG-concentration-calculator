@@ -134,6 +134,32 @@ Anything left empty stays empty on the printed worksheet for you to write in -
 including every solution date at once, via *Skip these and fill the tables in
 by hand after printing*.
 
+### Plate labels
+
+A wwPTFE plate is labelled with the plate's own name and nothing else -
+`999-GA-202609`. A plate that goes into storage carries the longer form,
+which names its contents and the GBL-WS-002 number it is logged under:
+
+    999-GA-202609 IgG eluate GA3084 25.09.2026 MF
+    999-GA-202609 APTS N-glycans GA3086 29.09.2026 MF
+
+| Label | Filled with |
+|---|---|
+| wwPTFE plate (isolation) | plate name |
+| 2 mL collection plate | plate name |
+| PCR plate **name** (deglycosylation) | plate name |
+| wwPTFE 0,2 µm plate (clean-up) | plate name |
+| 1 mL collection plate (IgG eluate) | the long form |
+| 0.8 mL round-bottom (APTS glycans) | the long form |
+
+`Sample label` on each GBL-WS-002 repeats the label of the plate that sheet
+describes, so the paperwork and the plate read the same.
+
+The answer boxes behind these range from 55pt to over 400pt wide. Rather than
+widen the rectangle filter until page furniture starts qualifying, an
+unfound box falls back to writing just after the label - which lands inside
+it anyway.
+
 ## The storage worksheets (GBL-WS-002)
 
 One filled sheet per storage number the plate takes - IgG eluate, dry IgG,

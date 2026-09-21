@@ -80,6 +80,72 @@ STORAGE_KINDS = {
 }
 
 
+# ---------------------------------------------------------------------------
+#  The plate labels.
+#
+#  A wwPTFE plate is labelled with the plate's own name and nothing else -
+#  '999-GA-202608'.  The 1 mL collection plate holding the IgG eluate is the
+#  documented exception and carries the longer form (see ws_sheets.plate_label):
+#
+#      999-GA-202609 IgG eluate GA3084 18.09.2026 MF
+#
+#  Each entry is (page, printed label, how to build it).  'batch' means the
+#  plate name alone; 'stored' means the eluate form, with the storage number
+#  of whatever that plate holds.
+# ---------------------------------------------------------------------------
+PLATE_LABELS = {
+    "isolation": [
+        (2, "wwPTFE plate label:", "batch", None),
+        (2, "2 mL collection plate label:", "batch", None),
+    ],
+    "deglyco": [
+        # the sheet asks for the plate 'name', not a label
+        (0, "PCR plate name:", "batch", None),
+    ],
+    "cleanup": [
+        (0, "plate label", "batch", None),          # the wwPTFE 0,2 um plate
+        (2, "0.8 ml round-bottom collection plate label:", "stored",
+         ("apts", "APTS N-glycans")),
+    ],
+}
+
+
+def storage_labels(batch, numbers, dates, initials, default_date):
+    """-> {storage key: the label written on the plate holding it}.
+
+    The 'Sample label' on GBL-WS-002 is the label on the plate it describes,
+    so the two always read the same.
+    """
+    numbers = numbers or {}
+    iso = (dates or {}).get("isolation") or default_date
+    cln = (dates or {}).get("cleanup") or default_date
+    return {
+        "eluate": ws_sheets.plate_label(batch, numbers.get("eluate"), iso,
+                                        initials, what="IgG eluate"),
+        # the dried IgG lives in the PCR plate, which carries the plate name
+        "dry_eluate": batch or "",
+        "apts": ws_sheets.plate_label(batch, numbers.get("apts"), cln,
+                                      initials, what="APTS N-glycans"),
+    }
+
+
+def plate_label_values(batch, numbers, dates, initials, default_date):
+    """-> {field key: label text} for every plate label on the worksheets."""
+    out = {}
+    for ws_key, entries in PLATE_LABELS.items():
+        when = (dates or {}).get(ws_key) or default_date
+        for i, (_page, printed, how, stored) in enumerate(entries):
+            key = f"label_{ws_key}_{i}"
+            if how == "batch":
+                out[key] = batch or ""
+            else:
+                storage_key, what = stored
+                out[key] = ws_sheets.plate_label(
+                    batch, (numbers or {}).get(storage_key), when, initials,
+                    what=what)
+    return out
+
+
 def working_days(start, n):
     """-> n dates beginning at `start`, skipping Saturdays and Sundays.
 
@@ -214,7 +280,16 @@ def find_label_box(items, rects, label, near_x=None):
             continue
         if near_x is not None and abs(parts[0][0] - near_x) > 60:
             continue
-        left = parts[0][0]
+        # Measure from where THIS label ends, not from the start of the line.
+        # 'wwPTFE plate label:   2 mL collection plate label:' share a
+        # baseline, and starting from the line put both of them in the first
+        # box - the second value landing on top of the first.
+        left, acc = parts[0][0], ""
+        for px, _psize, ptext in parts:
+            acc += squash(ptext)
+            if target in acc:
+                left = px
+                break
         best = None
         for (x0, y0, w, h) in rects:
             if x0 <= left or not (y0 - 3 <= y <= y0 + h + 1):
@@ -394,7 +469,10 @@ def page_rects(page, reader):
                 continue
             A, B, C, D, E, F = ctm
             X, Y, W, H = x * A + y * C + E, x * B + y * D + F, w * A, h * D
-            if 5 < abs(W) < 90 and 4 < abs(H) < 60:
+            # Up to 260pt wide because the plate-label answer boxes are about
+            # 160pt; the grid cells are 38-47 and cell_boxes takes the
+            # smallest rect containing a well, so a wide one never wins there.
+            if 5 < abs(W) < 260 and 4 < abs(H) < 60:
                 out.append((min(X, X + W), min(Y, Y + H), abs(W), abs(H)))
     return out
 
@@ -537,7 +615,13 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
             if items is None:
                 items = page_items(page)
             if after == "box":
+                # Answer boxes vary from 55pt to over 400pt wide.  Rather
+                # than widen the rectangle filter until page furniture starts
+                # qualifying, fall back to writing just after the label when
+                # no box is found - which lands inside it anyway.
                 spot = find_label_box(items, page_rects(page, reader), label, near_x)
+                if spot is None:
+                    spot = find_label(items, label, near_x, after=True)
             elif after == "box_left":
                 spot = find_label_box_left(items, page_rects(page, reader), label)
             else:
@@ -703,6 +787,15 @@ def values_for(key, batch, numbers, date, initials, avg_conc, aliquot_ul):
     return v
 
 
+def _label_spec(key):
+    """-> {page: [(printed label, value key, near_x, placement)]}."""
+    out = {}
+    for i, (page, printed, _how, _sk) in enumerate(PLATE_LABELS.get(key, [])):
+        out.setdefault(page, []).append(
+            (printed, f"label_{key}_{i}", None, "box"))
+    return out
+
+
 def _consumable_spec(key):
     """-> {page: [(label, value key, near_x, after)]} for one worksheet."""
     out = {}
@@ -804,6 +897,9 @@ def fill_all(sources, out_dir, layout, batch="", numbers=None, date=None,
                           avg_conc, aliquot_ul)
         vals.update({k: v for k, v in (consumables or {}).items() if v})
         spec["consumables"] = _consumable_spec(key)
+        for page, entries in _label_spec(key).items():
+            spec["consumables"].setdefault(page, []).extend(entries)
+        vals.update(plate_label_values(batch, numbers, dates, initials, when))
         spec["table"] = _solution_spec(key, solutions, initials)
         name = dict((k, n) for k, _, n in ws_sheets.WORKSHEETS)[key]
         stem = f"{batch} " if batch else ""

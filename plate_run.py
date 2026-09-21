@@ -1213,6 +1213,9 @@ class PlateRunPanel(ttk.Frame):
                 batch=spec["batch"], numbers=spec["numbers"],
                 date=spec["dates"].get("isolation") or spec["date"],
                 dates=spec["dates"], colours=self.colours, kinds=taken,
+                labels=ws_fill.storage_labels(
+                    spec["batch"], spec["numbers"], spec["dates"],
+                    spec["initials"], spec["date"]),
                 log=self.app.say)
             self.app.say("")
             self.app.say(f"Saved {len(written)} storage worksheet(s) into "

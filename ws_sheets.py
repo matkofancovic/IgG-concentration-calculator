@@ -128,15 +128,17 @@ def batch_from_path(path):
 batch_from_filename = batch_from_path
 
 
-def plate_label(batch, storage_no, date, initials):
+def plate_label(batch, storage_no, date, initials, what="IgG eluate"):
     """'999-GA-202609 IgG eluate GA3084 18.09.2026 MF'
 
-    The label written on the 1 mL collection plate that holds the IgG
-    eluate: batch, what is in it, the storage sheet number it is logged
-    under, the date, and who did it.  The storage number goes on as
-    written on the sheet, with no prefix.
+    The label written on a plate that goes into storage: batch, what is in
+    it, the storage sheet number it is logged under, the date, and who did
+    it.  The storage number goes on as written on the sheet, with no prefix.
+
+    `what` names the contents, because the same form labels the 0.8 mL
+    round-bottom plate of APTS glycans as well as the IgG eluate.
     """
-    bits = [batch or "", "IgG eluate", storage_no or "",
+    bits = [batch or "", what, storage_no or "",
             date.strftime("%d.%m.%Y"), initials or ""]
     return " ".join(b for b in bits if b)
 
