@@ -64,11 +64,11 @@ WHAT IT IS
      The next person to open the program is offered that LOT as the current
      one, already filled in.  The old LOTs stay in the drop-down.
 
-  *  YOU MAKE A SOLUTION and press "I made a batch..." (date, how many mL,
-     your initials).
-     Everyone now sees that batch, how much is left, and how many more
-     plates it covers.  When someone runs a plate, the program subtracts
-     one plate's worth automatically.
+  *  YOU MAKE UP A SOLUTION and press "+" next to it (just the date).
+     Everyone is offered that preparation from the drop-down.  When the
+     bottle is used up, press "-" and it comes off the list for everybody.
+     No volumes and no stock levels - the bottle in the fridge is the
+     authority on that.
 
   *  YOU USE A PROTEIN G PLATE.
      The program counts it.  Nobody types "how many times has this plate
@@ -128,6 +128,8 @@ WHAT IT IS
       IgG eluate, dry IgG, APTS glycans - each with the coloured sample
       grid.  The freezer letter and drawer number are left blank for you to
       write in at the freezer.
+   *  The four steps across the top - Plate, Numbers, Materials, Build -
+      show one panel at a time.  Click along them; nothing is hidden.
    *  Nothing is ever locked.  Every button can be pressed again, in any
       order, as many times as you like.  Building something twice does not
       double-count the solutions or the Protein G plate.

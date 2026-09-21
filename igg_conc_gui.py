@@ -14,7 +14,7 @@ plate_run.py.
 Requires: openpyxl, reportlab, pypdf   (pip install -r requirements.txt)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.12.0"
+__version__ = "2.0.0"
 
 import os
 import re
@@ -431,7 +431,7 @@ class App(ttk.Frame):
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=5)      # the form gets the room
+        self.rowconfigure(0, weight=9)      # the steps get the room
         self.rowconfigure(2, weight=1)      # the report pane
 
         import plate_run
@@ -439,22 +439,23 @@ class App(ttk.Frame):
         self.view.grid(row=0, column=0, sticky="nsew")
         self.panel = self.view.panel
 
-        ttk.Label(self, text="Report", style="Section.TLabel").grid(
-            row=1, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(self, text="Report", style="Muted.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(10, 4))
         wrap = ttk.Frame(self)
         wrap.grid(row=2, column=0, sticky="nsew")
         wrap.columnconfigure(0, weight=1)
         wrap.rowconfigure(0, weight=1)
-        self.log = tk.Text(wrap, height=7, wrap="none", state="disabled",
+        self.log = tk.Text(wrap, height=4, wrap="none", state="disabled",
                            font=("Consolas", 10), relief="flat", borderwidth=0,
-                           highlightthickness=1, highlightbackground="#d7dce2",
-                           highlightcolor="#d7dce2", background="#fbfbfb",
-                           foreground="#1b1f24", padx=10, pady=8)
+                           highlightthickness=1, highlightbackground="#DCE5E0",
+                           highlightcolor="#DCE5E0", background="#FFFFFF",
+                           foreground="#09341F", padx=12, pady=10)
         self.log.grid(row=0, column=0, sticky="nsew")
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.log.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self.log.configure(yscrollcommand=sb.set)
         self.log.tag_configure("warn", foreground="#b00000")
+        self.configure(padding=0)
 
         self.status = ttk.Label(self, text="Open a plate to start.",
                                 anchor="w", style="Muted.TLabel")
@@ -510,7 +511,7 @@ class App(ttk.Frame):
 def main():
     root = tk.Tk()
     root.title(f"GlycanAge - plate run  v{__version__}")
-    root.minsize(1280, 900)          # the plate list sits beside the form
+    root.minsize(1320, 920)          # the plate list sits beside the form
     import plate_run
     plate_run.apply_theme(root)
     App(root)

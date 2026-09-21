@@ -18,17 +18,27 @@ Replaces doing all of it by hand.
 
 ```
 ┌──────────────┬──────────────────────────────────────┐
-│ Plates       │  1. The plate - both files, once     │
-│              │  2. Worksheet and storage numbers    │
-│ 999-GA-…  ✓  │  3. Filter plates and enzyme         │
-│ 998-GA-…  ◐  │  4. Solution dates (optional)        │
-│ 997-GA-…  ✓  │  5. Build                            │
-│              │  6. Where the blank worksheets live  │
-│ [New plate…] │                                      │
+│  GlycanAge   │  999-GA-202609                       │
+│  plate run   │  999-GA-202609 Pippeting List.xlsx   │
+│              │                                      │
+│  ✓ 999-GA-…  │ [1 Plate][2 Numbers][3 Materials]…   │
+│  ◐ 998-GA-…  │  ┌────────────────────────────────┐  │
+│  ✓ 997-GA-…  │  │  one step at a time            │  │
+│              │  └────────────────────────────────┘  │
+│ [New plate]  │                                      │
 ├──────────────┴──────────────────────────────────────┤
 │ Report                                              │
 └─────────────────────────────────────────────────────┘
 ```
+
+Dressed in the GlycanAge colours taken from **glycanage.hr** - deep green
+`#09341F`, the single orange accent `#E66439`, the soft ground `#F1F5F3` -
+so it reads as part of the same thing rather than a lab script bolted on.
+The orange is used only on the button you are meant to press next.
+
+**Four steps, one visible at a time.** Everything used to be stacked in six
+sections down a scrolling page, so finding a button meant hunting. Now the
+step you want is one click away and always on screen.
 
 ## The run
 
@@ -181,66 +191,21 @@ Note that GBL-WS-002 puts its answer boxes *before* the wording for
 `Sample reception worksheet no.` and `Lab worksheet no.`, where every other
 worksheet puts them after - so those two are placed into the box on the left.
 
-## The solution library
+## Solutions
 
-One central list the whole lab fills and reads. Whoever makes a solution
-records the batch; everyone else draws on it.
+One shared list. Whoever makes up a solution records the date with **+**;
+everyone else is offered it from the dropdown. When a bottle is used up,
+**−** takes that preparation off the list for everybody.
 
-| Column | What it is |
-|---|---|
-| **Needs / plate** | how much one plate uses - see below. `(calc)` means worked out from the worksheet |
-| **In stock** | what is left across all recorded batches |
-| **Plates left** | stock ÷ needs per plate |
-| **Batch prepared / By** | the batch currently being drawn from, and who made it |
+That is all it tracks. There are no volumes, no stock levels and no expiry:
+the bottle in the fridge is the authority on all three, and a number in a
+program that disagrees with the bottle is worse than no number at all.
 
-*I made a batch...* records a new one - date, how many mL, initials.
-*Set amount per plate...* overrides the requirement.
+The date you pick is what goes into the worksheet's own
+`Solution | Date of preparation | Initials` table.
 
-### Where the per-plate amounts come from
-
-They are read off the worksheets, not guessed. Every pipetting step that
-consumes a solution is listed in `SOLUTION_RECIPE` with the step it came
-from, multiplied by 96 wells, plus **20%** for dead volume, priming a
-repeater tip and the odd repeat. *Where does (calc) come from?* prints the
-full derivation into the report, so any figure can be checked against the
-SOP:
-
-    1x PBS               800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
-    1xPBS (0,25M NaCl)  4000 uL/well x 96 = 384.00 mL, +20% = 460.8 mL
-    80% ACN              900 uL/well x 96 = 86.40 mL, +20% = 103.68 mL
-    80% ACN / 100mM TEA  800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
-    30mM APTS            230 uL/plate = 0.23 mL, +20% = 0.28 mL
-
-`Repeat this step twice` is read as twice in total, matching the way the same
-worksheet writes `Repeat this step 4 times` for the ACN/TEA wash. The 100 uL
-of ACN inside the 106 uL transfer is the ACN added when the labelling
-reaction was stopped, and is not counted a second time.
-
-A figure someone sets by hand always wins over the calculated one. If the
-SOP changes, edit the recipe - the steps are written out so it is obvious
-what to change.
-
-**A solution nobody has recorded a batch of is *unknown*, not empty.** It
-shows as `not recorded` and never blocks a build: the library starts blank,
-and crying shortage on all sixteen would be noise people learn to click
-through. Once a batch exists the stock is real and a shortage is worth
-stopping for.
-
-Building a plate draws one plate's worth of every solution that worksheet
-uses. That is keyed to the GA batch, so rebuilding the same plate's worksheet
-does not double-count, and two analysts on two plates both count.
-
-Before it builds, anything that cannot cover one more plate is named:
-
-    There is not enough of:
-      - 30mM APTS: 3 mL left, this plate needs 5 mL
-
-Red in the list means not enough for one plate, amber means this is the last
-one. A solution with no *needs per plate* set is never judged - the program
-does not guess a requirement it was not told.
-
-The date written onto the worksheet's solutions table is the prepared date of
-the batch in use, so the paperwork follows the stock automatically.
+*Skip these and fill the tables in by hand after printing* leaves every
+solution row blank on the paper.
 
 ## What it does
 
