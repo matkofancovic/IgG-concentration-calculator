@@ -14,7 +14,7 @@ plate_run.py.
 Requires: openpyxl, reportlab, pypdf   (pip install -r requirements.txt)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 import os
 import re
@@ -507,10 +507,8 @@ def main():
     root = tk.Tk()
     root.title(f"GlycanAge - plate run  v{__version__}")
     root.minsize(1150, 840)          # the plate list sits beside the form
-    try:
-        ttk.Style().theme_use("vista")
-    except tk.TclError:
-        pass
+    import plate_run
+    plate_run.apply_theme(root)
     App(root)
     root.mainloop()
 

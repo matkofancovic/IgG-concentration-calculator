@@ -20,6 +20,7 @@ Nothing is ever locked.  Every output can be rebuilt and saved again at any
 point, in any order.  The numbered sections are the normal path, not a cage.
 """
 import os
+import re
 import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -31,9 +32,96 @@ import layout_colours
 
 DONE, PART, NEW = "✓", "◐", "·"
 
+# A restrained palette: one accent for the things you press, grey for the
+# things that only explain, and the traffic colours kept for stock and
+# progress so they still mean something when they appear.
+INK        = "#1b1f24"
+MUTED      = "#5b6672"
+ACCENT     = "#1f4e79"
+OK_GREEN   = "#1a7f37"
+WARN_AMBER = "#9a6700"
+BAD_RED    = "#b00000"
+HAIRLINE   = "#d7dce2"
+
+
+def apply_theme(root):
+    """Make it look like a program rather than a Tk demo.
+
+    Tk's defaults are a 1990s bitmap font on grey.  The lab runs Windows, so
+    Segoe UI is always there; setting it once on the named fonts fixes every
+    widget at once, including the ones ttk styles do not reach.
+    """
+    try:
+        import tkinter.font as tkfont
+        for name, size, weight in (("TkDefaultFont", 9, "normal"),
+                                   ("TkTextFont", 9, "normal"),
+                                   ("TkMenuFont", 9, "normal"),
+                                   ("TkHeadingFont", 9, "bold")):
+            f = tkfont.nametofont(name)
+            f.configure(family="Segoe UI", size=size, weight=weight)
+        tkfont.nametofont("TkFixedFont").configure(family="Consolas", size=9)
+    except Exception:
+        pass
+
+    style = ttk.Style(root)
+    for theme in ("vista", "winnative", "clam"):
+        try:
+            style.theme_use(theme)
+            break
+        except tk.TclError:
+            continue
+
+    style.configure(".", foreground=INK)
+    style.configure("TLabelframe", borderwidth=1, relief="solid",
+                    bordercolor=HAIRLINE, padding=10)
+    style.configure("TLabelframe.Label", foreground=ACCENT,
+                    font=("Segoe UI Semibold", 9))
+    style.configure("Muted.TLabel", foreground=MUTED)
+    style.configure("Head.TLabel", foreground=ACCENT,
+                    font=("Segoe UI Semibold", 11))
+    style.configure("Sub.TLabel", foreground=MUTED, font=("Segoe UI", 9))
+    style.configure("Good.TLabel", foreground=OK_GREEN)
+    style.configure("Warn.TLabel", foreground=WARN_AMBER)
+    style.configure("Bad.TLabel", foreground=BAD_RED)
+    style.configure("Treeview", rowheight=21, borderwidth=1, relief="solid",
+                    bordercolor=HAIRLINE)
+    style.configure("Treeview.Heading", font=("Segoe UI Semibold", 9))
+    style.configure("Primary.TButton", font=("Segoe UI Semibold", 9), padding=(12, 5))
+    style.configure("TButton", padding=(9, 4))
+    return style
+
 
 def _norm(path):
     return os.path.normpath(path) if path else path
+
+
+def next_number(value, step=1):
+    """'GA3084' -> 'GA3085'.  Keeps the prefix and the digit width.
+
+    Worksheet and storage numbers are taken in a run, so only the first one
+    is worth typing.  Returns '' if there is no trailing number to step.
+    """
+    m = re.search(r"^(.*?)(\d+)\s*$", value or "")
+    if not m:
+        return ""
+    head, digits = m.group(1), m.group(2)
+    return f"{head}{str(int(digits) + step).zfill(len(digits))}"
+
+
+def fill_series(first, vars_in_order, overwrite=False):
+    """Put first, first+1, first+2 ... into `vars_in_order`. -> how many set."""
+    value = (first or "").strip()
+    if not value:
+        return 0
+    n = 0
+    for i, var in enumerate(vars_in_order):
+        want = value if i == 0 else next_number(value, i)
+        if not want:
+            break
+        if overwrite or not var.get().strip():
+            var.set(want)
+            n += 1
+    return n
 
 
 def _scrollable(parent):
@@ -69,6 +157,107 @@ class Section(ttk.LabelFrame):
         self.columnconfigure(1, weight=1)
 
 
+def _ask_float(parent, prompt, unit, current=0):
+    """A small number prompt. -> float, or None if cancelled."""
+    win = tk.Toplevel(parent)
+    win.title("Amount")
+    win.transient(parent.winfo_toplevel())
+    win.resizable(False, False)
+    frame = ttk.Frame(win, padding=14)
+    frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text=prompt, wraplength=340, justify="left").grid(
+        row=0, column=0, columnspan=2, sticky="w")
+    var = tk.StringVar(value=(f"{float(current):g}" if current else ""))
+    entry = ttk.Entry(frame, textvariable=var, width=12)
+    entry.grid(row=1, column=0, sticky="w", pady=(10, 0))
+    ttk.Label(frame, text=unit, style="Muted.TLabel").grid(
+        row=1, column=1, sticky="w", padx=(6, 0), pady=(10, 0))
+
+    out = {}
+
+    def ok(_=None):
+        try:
+            out["v"] = float(var.get().strip().replace(",", "."))
+        except ValueError:
+            messagebox.showerror("Not a number",
+                                 "Type a number, for example 60 or 7.5.",
+                                 parent=win)
+            return
+        win.destroy()
+
+    btns = ttk.Frame(frame)
+    btns.grid(row=2, column=0, columnspan=2, sticky="e", pady=(14, 0))
+    ttk.Button(btns, text="Cancel", command=win.destroy).grid(row=0, column=0)
+    ttk.Button(btns, text="OK", command=ok).grid(row=0, column=1, padx=(6, 0))
+    entry.bind("<Return>", ok)
+    entry.focus_set()
+    win.grab_set()
+    parent.winfo_toplevel().wait_window(win)
+    return out.get("v")
+
+
+class SolutionBatchDialog(tk.Toplevel):
+    """Record a solution somebody made, for the whole lab to draw on."""
+
+    def __init__(self, parent, solution, store, who, on_done=None):
+        super().__init__(parent)
+        self.store, self.solution = store, solution
+        self.on_done = on_done or (lambda: None)
+        label = store_mod.SOLUTION_LABELS.get(solution, solution)
+        self.title(f"New batch - {label}")
+        self.transient(parent.winfo_toplevel())
+        self.resizable(False, False)
+
+        f = ttk.Frame(self, padding=14)
+        f.pack(fill="both", expand=True)
+        ttk.Label(f, text=f"A batch of {label} you have made.\n"
+                          "Everyone in the lab draws on it from here.",
+                  justify="left").grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self.date_var = tk.StringVar(
+            value=datetime.date.today().strftime("%d.%m.%Y"))
+        self.made_var = tk.StringVar()
+        self.by_var = tk.StringVar(value=who)
+        for i, (lbl, var, unit) in enumerate((
+                ("Date of preparation", self.date_var, ""),
+                ("Amount made", self.made_var, "mL"),
+                ("Initials", self.by_var, ""))):
+            ttk.Label(f, text=lbl).grid(row=i + 1, column=0, sticky="w",
+                                        pady=(10 if i == 0 else 4, 0))
+            e = ttk.Entry(f, textvariable=var, width=16)
+            e.grid(row=i + 1, column=1, sticky="w", padx=(10, 0),
+                   pady=(10 if i == 0 else 4, 0))
+            if unit:
+                ttk.Label(f, text=unit, style="Muted.TLabel").grid(
+                    row=i + 1, column=2, sticky="w", padx=(4, 0))
+
+        btns = ttk.Frame(f)
+        btns.grid(row=5, column=0, columnspan=3, sticky="e", pady=(16, 0))
+        ttk.Button(btns, text="Cancel", command=self.destroy).grid(row=0, column=0)
+        ttk.Button(btns, text="Save", command=self.save).grid(row=0, column=1,
+                                                              padx=(6, 0))
+        self.grab_set()
+
+    def save(self):
+        try:
+            made = float(self.made_var.get().strip().replace(",", "."))
+            if made <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Amount made",
+                                 "How many mL did you make?  For example 500.",
+                                 parent=self)
+            return
+        if not self.date_var.get().strip():
+            messagebox.showerror("Date", "Put the date of preparation in.",
+                                 parent=self)
+            return
+        self.store.add_solution_batch(self.solution, self.date_var.get().strip(),
+                                      made, self.by_var.get().strip().upper())
+        self.destroy()
+        self.on_done()
+
+
 class PlateList(ttk.Frame):
     """Every plate seen so far, newest first, with how far each one got."""
 
@@ -79,7 +268,7 @@ class PlateList(ttk.Frame):
         self.rowconfigure(1, weight=1)
         self.columnconfigure(0, weight=1)
 
-        ttk.Label(self, text="Plates", font=("", 10, "bold")).grid(
+        ttk.Label(self, text="Plates", style="Head.TLabel").grid(
             row=0, column=0, sticky="w", pady=(0, 6))
 
         self.tree = ttk.Treeview(self, columns=("state",), show="tree headings",
@@ -94,8 +283,8 @@ class PlateList(ttk.Frame):
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.bind("<<TreeviewSelect>>", self._picked)
 
-        self.tree.tag_configure("done", foreground="#1a7f37")
-        self.tree.tag_configure("part", foreground="#9a6700")
+        self.tree.tag_configure("done", foreground=OK_GREEN)
+        self.tree.tag_configure("part", foreground=WARN_AMBER)
 
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -105,7 +294,7 @@ class PlateList(ttk.Frame):
             row=0, column=1, sticky="w", padx=(6, 0))
 
         self.key = ttk.Label(
-            self, foreground="#666666", justify="left",
+            self, style="Muted.TLabel", justify="left",
             text=f"{DONE} all three worksheets built\n"
                  f"{PART} part way through\n"
                  f"{NEW} nothing built yet")
@@ -173,6 +362,20 @@ class PlateRunPanel(ttk.Frame):
         self.sheet_used = ""
         self.built = {}
 
+        header = ttk.Frame(self, padding=(14, 12, 14, 8))
+        header.pack(fill="x")
+        header.columnconfigure(0, weight=1)
+        self.title_lbl = ttk.Label(header, text="No plate open",
+                                   style="Head.TLabel")
+        self.title_lbl.grid(row=0, column=0, sticky="w")
+        self.sub_lbl = ttk.Label(header, text="Open a Pippeting List to start, "
+                                             "or pick a plate on the left.",
+                                 style="Sub.TLabel")
+        self.sub_lbl.grid(row=1, column=0, sticky="w", pady=(2, 0))
+        self.stage_lbl = ttk.Label(header, text="", style="Sub.TLabel")
+        self.stage_lbl.grid(row=0, column=1, rowspan=2, sticky="e")
+        ttk.Separator(self, orient="horizontal").pack(fill="x")
+
         outer, body = _scrollable(self)
         outer.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
@@ -203,7 +406,7 @@ class PlateRunPanel(ttk.Frame):
         where = ("the share" if not self.store.using_local
                  else "this PC only - the share was unreachable")
         ttk.Label(body, text=f"LOTs and plate progress are remembered on {where}.",
-                  foreground="#666666").grid(row=r, column=0, sticky="w",
+                  style="Muted.TLabel").grid(row=r, column=0, sticky="w",
                                              pady=(4, 10))
 
     # ------------------------------------------------------------- sections
@@ -225,7 +428,7 @@ class PlateRunPanel(ttk.Frame):
                 row=i, column=2, pady=(0 if i == 0 else 6, 0))
 
         ttk.Label(s, text="The .txt is only needed on day 2 - leave it empty until "
-                          "the NanoDrop is done.", foreground="#666666").grid(
+                          "the NanoDrop is done.", style="Muted.TLabel").grid(
             row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         row = ttk.Frame(s)
@@ -241,7 +444,7 @@ class PlateRunPanel(ttk.Frame):
                                                            sticky="w")
 
         self.plate_info = ttk.Label(s, text="No plate loaded yet.",
-                                    foreground="#666666")
+                                    style="Muted.TLabel")
         self.plate_info.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
         return r + 1
 
@@ -249,26 +452,39 @@ class PlateRunPanel(ttk.Frame):
         s = Section(body, 2, "Worksheet and storage numbers taken for this plate")
         s.grid(row=r, column=0, sticky="ew", pady=(0, 10))
 
-        ttk.Label(s, text="Working worksheets", foreground="#666666").grid(
-            row=0, column=0, sticky="w")
-        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            ttk.Label(s, text=name).grid(row=i + 1, column=0, sticky="w", pady=2)
-            v = tk.StringVar()
-            self.num_vars[key] = v
-            ttk.Entry(s, textvariable=v, width=14).grid(row=i + 1, column=1,
-                                                        sticky="w", padx=(10, 30))
+        # Each group is its own frame, so the Fill button can sit beside the
+        # first entry without landing in the next group's column.
+        def group(col, heading, rows):
+            f = ttk.Frame(s)
+            f.grid(row=0, column=col, sticky="nw", padx=(0, 36))
+            ttk.Label(f, text=heading, style="Muted.TLabel").grid(
+                row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
+            order = []
+            for i, (key, label) in enumerate(rows):
+                ttk.Label(f, text=label).grid(row=i + 1, column=0, sticky="w",
+                                              pady=2)
+                v = tk.StringVar()
+                self.num_vars[key] = v
+                order.append(v)
+                ttk.Entry(f, textvariable=v, width=14).grid(
+                    row=i + 1, column=1, sticky="w", padx=(10, 6))
+            ttk.Button(f, text="Fill ↓", width=7,
+                       command=lambda o=order: self.fill_down(o)).grid(
+                row=1, column=2, sticky="w")
+            return order
 
-        ttk.Label(s, text="Storage (GBL-WS-002)", foreground="#666666").grid(
-            row=0, column=2, sticky="w")
-        for i, (key, label) in enumerate(ws_sheets.STORAGE):
-            ttk.Label(s, text=label).grid(row=i + 1, column=2, sticky="w", pady=2)
-            v = tk.StringVar()
-            self.num_vars[key] = v
-            ttk.Entry(s, textvariable=v, width=14).grid(row=i + 1, column=3,
-                                                        sticky="w", padx=(10, 0))
+        self.ws_order = group(0, "Working worksheets",
+                              [(k, n) for k, _, n in ws_sheets.WORKSHEETS])
+        self.store_order = group(1, "Storage (GBL-WS-002)",
+                                 list(ws_sheets.STORAGE))
+
+        ttk.Label(s, text="Type the first number and press Fill ↓ - they are "
+                          "taken in a run, so the rest follow (GA3084, GA3085, "
+                          "GA3086).", style="Muted.TLabel").grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         extra = ttk.Frame(s)
-        extra.grid(row=5, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        extra.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
         for i, (key, label) in enumerate(
                 (("reception", "Sample reception worksheet no."),
                  ("sample_storage", "Sample storage worksheet no."))):
@@ -296,8 +512,13 @@ class PlateRunPanel(ttk.Frame):
             opts = self.store.options(key)
             if opts:
                 v.set(opts[0])
+            if key == "proteing_no":
+                # the use count belongs to the plate, so it follows the number
+                v.trace_add("write", lambda *_: self.show_proteing_uses())
+                self.uses_lbl = ttk.Label(s, text="", style="Muted.TLabel")
+                self.uses_lbl.grid(row=i, column=2, sticky="w", padx=(4, 0))
 
-        ttk.Label(s, text="PNGase F vial", foreground="#666666").grid(
+        ttk.Label(s, text="PNGase F vial", style="Muted.TLabel").grid(
             row=n, column=0, sticky="w", pady=(8, 0))
         vial = ttk.Frame(s)
         vial.grid(row=n, column=1, sticky="w", padx=(10, 0), pady=(8, 0))
@@ -306,36 +527,150 @@ class PlateRunPanel(ttk.Frame):
         ttk.Radiobutton(vial, text="50 µg", value="50",
                         variable=self.enzyme_var).grid(row=0, column=1)
         ttk.Label(vial, text="- decides which 'Enzyme LOT' line is filled",
-                  foreground="#666666").grid(row=0, column=2, padx=(14, 0))
+                  style="Muted.TLabel").grid(row=0, column=2, padx=(14, 0))
 
         ttk.Label(s, text="Check the offered LOT against the label on the bench "
                           "before printing.  Anything left empty prints empty.",
-                  foreground="#666666").grid(row=n + 1, column=0, columnspan=3,
+                  style="Muted.TLabel").grid(row=n + 1, column=0, columnspan=3,
                                              sticky="w", pady=(8, 0))
+        self.show_proteing_uses()
         return r + 1
+
+    def show_proteing_uses(self):
+        """The Protein G use count, counted rather than typed."""
+        if not hasattr(self, "uses_lbl"):
+            return
+        no = self.cons_vars["proteing_no"].get().strip()
+        if not no:
+            self.uses_lbl.config(text="")
+            return
+        used = self.store.proteing_uses(no)
+        batch = self.batch_var.get().strip()
+        already = batch and batch in (
+            self.store._read(store_mod.CONSUMABLES_FILE)
+            .get("_proteing", {}).get(no, {}).get("batches", []))
+        nxt = used if already else used + 1
+        self.uses_lbl.config(
+            text=f"used on {used} plate(s) so far  →  this plate is no. {nxt}")
 
     def _sec_solutions(self, body, r):
-        s = Section(body, 4, "Solution preparation dates  -  optional")
+        s = Section(body, 4, "Solution library  -  shared by the whole lab")
         s.grid(row=r, column=0, sticky="ew", pady=(0, 10))
+        s.columnconfigure(0, weight=1)
 
-        ttk.Checkbutton(s, text="Skip these and fill the tables in by hand after "
-                               "printing", variable=self.skip_solutions).grid(
-            row=0, column=0, columnspan=6, sticky="w", pady=(0, 6))
+        ttk.Label(s, text="Whoever makes a solution records the batch here and "
+                          "everyone sees it.  Set how much one plate needs and "
+                          "the program works out how many plates are left.").grid(
+            row=0, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(s, text="Skip the dates on the worksheets and fill those "
+                               "tables in by hand after printing",
+                        variable=self.skip_solutions).grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(6, 6))
 
-        known = self.store.solutions()
-        for col, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            frame = ttk.Frame(s)
-            frame.grid(row=1, column=col, sticky="nw", padx=(0, 24))
-            ttk.Label(frame, text=name, foreground="#666666").grid(
-                row=0, column=0, columnspan=2, sticky="w")
-            for i, sol in enumerate(store_mod.SOLUTIONS[key]):
-                ttk.Label(frame, text=store_mod.SOLUTION_LABELS.get(sol, sol)).grid(
-                    row=i + 1, column=0, sticky="w", pady=1)
-                v = tk.StringVar(value=known.get(sol, ""))
-                self.sol_vars[sol] = v
-                ttk.Entry(frame, textvariable=v, width=12).grid(
-                    row=i + 1, column=1, sticky="w", padx=(8, 0), pady=1)
+        cols = ("need", "stock", "left", "prepared", "by")
+        self.sol_tree = ttk.Treeview(s, columns=cols, show="tree headings",
+                                     selectmode="browse", height=16)
+        self.sol_tree.heading("#0", text="Solution")
+        for c, t, w in (("need", "Needs / plate", 90), ("stock", "In stock", 80),
+                        ("left", "Plates left", 80),
+                        ("prepared", "Batch prepared", 110), ("by", "By", 50)):
+            self.sol_tree.heading(c, text=t)
+            self.sol_tree.column(c, width=w, stretch=False, anchor="center")
+        self.sol_tree.column("#0", width=210, stretch=True)
+        self.sol_tree.grid(row=2, column=0, columnspan=3, sticky="ew")
+        self.sol_tree.tag_configure("short", foreground=BAD_RED)
+        self.sol_tree.tag_configure("low", foreground=WARN_AMBER)
+        self.sol_tree.tag_configure("head", foreground=MUTED)
+
+        btns = ttk.Frame(s)
+        btns.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Button(btns, text="I made a batch...", command=self.add_batch).grid(
+            row=0, column=0)
+        ttk.Button(btns, text="Set amount per plate...",
+                   command=self.set_per_plate).grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(btns, text="Refresh", command=self.refresh_solutions).grid(
+            row=0, column=2, padx=(6, 0))
+        ttk.Label(btns, text="   red = not enough for one plate,  amber = last plate",
+                  style="Muted.TLabel").grid(row=0, column=3, padx=(10, 0))
+
+        # the dates that go on the worksheets come from the batch in use
+        for key, _, _n in ws_sheets.WORKSHEETS:
+            for sol in store_mod.SOLUTIONS[key]:
+                self.sol_vars.setdefault(sol, tk.StringVar())
+        self.refresh_solutions()
         return r + 1
+
+    # ---------------------------------------------------------- solutions
+
+    def _all_solutions(self):
+        """-> [(worksheet name, [solution, ...])] in worksheet order."""
+        return [(name, store_mod.SOLUTIONS[key])
+                for key, _, name in ws_sheets.WORKSHEETS]
+
+    def selected_solution(self):
+        sel = self.sol_tree.selection()
+        if not sel:
+            return None
+        return getattr(self, "_sol_rows", {}).get(sel[0])
+
+    def refresh_solutions(self):
+        """Redraw the library and pull the in-use batch dates into the form."""
+        lib = self.store.solution_library()
+        for i in self.sol_tree.get_children():
+            self.sol_tree.delete(i)
+        self._sol_rows = {}
+
+        for ws_name, sols in self._all_solutions():
+            head = self.sol_tree.insert("", "end", text=ws_name, values=("", "", "", "", ""),
+                                        tags=("head",), open=True)
+            for sol in sols:
+                rec = lib.get(sol) or {}
+                per = float(rec.get("per_plate_ml") or 0)
+                stock = self.store.stock_ml(sol)
+                left = self.store.plates_left(sol)
+                batch = self.store._active_batch(rec) or {}
+                prepared = batch.get("prepared", "")
+                self.sol_vars.setdefault(sol, tk.StringVar()).set(prepared)
+
+                tag = ""
+                if per > 0:
+                    if stock < per:
+                        tag = "short"
+                    elif left is not None and left <= 1:
+                        tag = "low"
+                iid = self.sol_tree.insert(
+                    head, "end", text="   " + store_mod.SOLUTION_LABELS.get(sol, sol),
+                    values=(f"{per:g} mL" if per else "-",
+                            f"{stock:g} mL" if stock else "-",
+                            "-" if left is None else str(left),
+                            prepared or "-", batch.get("by", "") or "-"),
+                    tags=(tag,) if tag else ())
+                self._sol_rows[iid] = sol
+
+    def add_batch(self):
+        sol = self.selected_solution()
+        if not sol:
+            messagebox.showinfo("Pick a solution",
+                                "Select the solution you made, then press "
+                                "'I made a batch...'.")
+            return
+        SolutionBatchDialog(self, sol, self.store,
+                            self.initials_var.get().strip().upper(),
+                            on_done=self.refresh_solutions)
+
+    def set_per_plate(self):
+        sol = self.selected_solution()
+        if not sol:
+            messagebox.showinfo("Pick a solution",
+                                "Select a solution, then press 'Set amount per "
+                                "plate...'.")
+            return
+        cur = (self.store.solution_library().get(sol) or {}).get("per_plate_ml", 0)
+        ml = _ask_float(self, f"How much {store_mod.SOLUTION_LABELS.get(sol, sol)} "
+                              f"does one plate need?", "mL per plate", cur)
+        if ml is not None:
+            self.store.set_per_plate(sol, ml)
+            self.refresh_solutions()
 
     def _sec_build(self, body, r):
         s = Section(body, 5, "Build  -  any of these, in any order, as often as you like")
@@ -343,9 +678,10 @@ class PlateRunPanel(ttk.Frame):
 
         day1 = ttk.Frame(s)
         day1.grid(row=0, column=0, columnspan=4, sticky="w")
-        ttk.Label(day1, text="Day 1", width=8, foreground="#666666").grid(
+        ttk.Label(day1, text="Day 1", width=8, style="Muted.TLabel").grid(
             row=0, column=0, sticky="w")
         self.iso_btn = ttk.Button(day1, text="IgG isolation worksheet",
+                                  style="Primary.TButton",
                                   command=self.build_isolation)
         self.iso_btn.grid(row=0, column=1)
         ttk.Button(day1, text="Open", width=7,
@@ -357,9 +693,10 @@ class PlateRunPanel(ttk.Frame):
 
         day2 = ttk.Frame(s)
         day2.grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 0))
-        ttk.Label(day2, text="Day 2", width=8, foreground="#666666").grid(
+        ttk.Label(day2, text="Day 2", width=8, style="Muted.TLabel").grid(
             row=0, column=0, sticky="w")
         self.day2_btn = ttk.Button(day2, text="Workbook + deglyco + clean up",
+                                   style="Primary.TButton",
                                    command=self.build_day2)
         self.day2_btn.grid(row=0, column=1)
         ttk.Button(day2, text="Print deglyco", command=lambda:
@@ -377,7 +714,7 @@ class PlateRunPanel(ttk.Frame):
                                    "the worksheets",
                         variable=self.attach_var).grid(row=1, column=0, sticky="w")
 
-        self.note = ttk.Label(s, text="", foreground="#666666")
+        self.note = ttk.Label(s, text="", style="Muted.TLabel")
         self.note.grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
         return r + 1
 
@@ -390,7 +727,7 @@ class PlateRunPanel(ttk.Frame):
         ttk.Button(s, text="Browse...", command=self.pick_blanks).grid(row=0, column=1)
         ttk.Label(s, text="Newest revision of each document code wins, so a new "
                           "release is picked up on its own.",
-                  foreground="#666666").grid(row=1, column=0, columnspan=2,
+                  style="Muted.TLabel").grid(row=1, column=0, columnspan=2,
                                              sticky="w", pady=(4, 0))
         return r + 1
 
@@ -455,6 +792,9 @@ class PlateRunPanel(ttk.Frame):
         if not self.out_var.get():
             self.out_var.set(os.path.dirname(path))
 
+        self.title_lbl.config(text=self.batch_var.get().strip() or
+                              os.path.basename(path))
+        self.sub_lbl.config(text=os.path.basename(path))
         stands = sorted({v.rsplit("_", 1)[0] for v in layout.values()
                          if v and v.startswith("STAND_")})
         blanks = [v for v in layout.values() if v and v.lower().startswith("blank")]
@@ -472,6 +812,7 @@ class PlateRunPanel(ttk.Frame):
         if not saved:
             self.app.say(f"{batch or 'This plate'} - nothing remembered yet.")
             self.note.config(text="")
+            self.stage_lbl.config(text="nothing built yet", style="Sub.TLabel")
             return
         for group, bag in (("numbers", self.num_vars),
                            ("consumables", self.cons_vars),
@@ -492,6 +833,12 @@ class PlateRunPanel(ttk.Frame):
         self.note.config(text="Already built: " + ", ".join(names[k] for k in done
                                                             if k in names)
                          if done else "")
+        self.stage_lbl.config(
+            text=("all three worksheets built" if len(done) >= 3
+                  else f"{len(done)} of 3 worksheets built" if done
+                  else "nothing built yet"),
+            style=("Good.TLabel" if len(done) >= 3
+                   else "Warn.TLabel" if done else "Sub.TLabel"))
 
     # --------------------------------------------------------------- state
 
@@ -520,6 +867,18 @@ class PlateRunPanel(ttk.Frame):
 
         cons = {k: v.get().strip() for k, v in self.cons_vars.items()}
         cons[f"enzyme_lot_{self.enzyme_var.get()}"] = cons.pop("enzyme_lot", "")
+
+        # 'How many times has this Protein G plate been used?' is counted from
+        # the plates the lab has run, not typed.  This plate is the next one
+        # unless it has already been counted (a rebuild).
+        batch = self.batch_var.get().strip()
+        pg = cons.get("proteing_no", "")
+        if pg:
+            seen = (self.store._read(store_mod.CONSUMABLES_FILE)
+                    .get("_proteing", {}).get(pg, {}).get("batches", []))
+            used = len(seen)
+            cons["proteing_uses"] = str(used if (batch and batch in seen)
+                                        else used + 1)
         sols = ({} if self.skip_solutions.get()
                 else {k: v.get().strip() for k, v in self.sol_vars.items()
                       if v.get().strip()})
@@ -556,14 +915,77 @@ class PlateRunPanel(ttk.Frame):
         })
         self.on_built(batch)
 
-    def remember_consumables(self):
+    def fill_down(self, order):
+        """First number typed -> the rest of the run."""
+        first = order[0].get().strip()
+        if not first:
+            messagebox.showinfo("Type the first one",
+                                "Put the first number in and press Fill ↓ - "
+                                "the rest follow it in order.")
+            return
+        if not next_number(first):
+            messagebox.showwarning(
+                "Cannot continue that",
+                f"{first!r} does not end in a number, so there is nothing to "
+                "count on from.  Fill the rest in by hand.")
+            return
+        blanks = [v for v in order[1:] if not v.get().strip()]
+        if not blanks and not messagebox.askyesno(
+                "Overwrite?", "The rest already have numbers.  Replace them?"):
+            return
+        fill_series(first, order, overwrite=not blanks)
+
+    def solutions_for(self, keys):
+        """Every solution the given worksheets draw on."""
+        out = []
+        for k in keys:
+            for sol in store_mod.SOLUTIONS.get(k, []):
+                if sol not in out:
+                    out.append(sol)
+        return out
+
+    def warn_shortages(self, keys):
+        """-> True to carry on.  Names the solutions that will not stretch."""
+        short = self.store.shortages(self.solutions_for(keys))
+        if not short:
+            return True
+        lines = "\n".join(
+            f"  - {store_mod.SOLUTION_LABELS.get(n, n)}: "
+            f"{have:g} mL left, this plate needs {per:g} mL"
+            for n, have, per in short)
+        self.app.say("")
+        for n, have, per in short:
+            self.app.say(f"  !! {store_mod.SOLUTION_LABELS.get(n, n)} - "
+                         f"{have:g} mL left, needs {per:g} mL for this plate")
+        return messagebox.askyesno(
+            "Solutions need making",
+            "There is not enough of:\n\n" + lines
+            + "\n\nRecord a new batch in the solution library, or carry on "
+              "anyway if the stock figure is out of date.\n\nCarry on?")
+
+    def remember_consumables(self, keys=(), count_proteing=False):
         who = self.initials_var.get().strip().upper()
+        batch = self.batch_var.get().strip()
         for key, var in self.cons_vars.items():
             self.store.remember(key, var.get().strip(), who)
             self.cons_boxes[key].configure(values=self.store.options(key))
-        if not self.skip_solutions.get():
-            for name, var in self.sol_vars.items():
-                self.store.remember_solution(name, var.get().strip())
+
+        if count_proteing:
+            no = self.cons_vars["proteing_no"].get().strip()
+            if no and batch:
+                n = self.store.record_proteing_use(no, batch, who)
+                self.app.say(f"Protein G plate {no}: now used on {n} plate(s).")
+                self.show_proteing_uses()
+
+        if keys and not self.skip_solutions.get():
+            for name, left in self.store.consume(self.solutions_for(keys),
+                                                 batch, who):
+                per = (self.store.solution_library().get(name) or {}).get(
+                    "per_plate_ml") or 0
+                if per:
+                    self.app.say(f"  {store_mod.SOLUTION_LABELS.get(name, name)}: "
+                                 f"{left:g} mL left")
+            self.refresh_solutions()
 
     # -------------------------------------------------------------- builds
 
@@ -606,12 +1028,14 @@ class PlateRunPanel(ttk.Frame):
                 "Nothing entered for:\n\n  - " + "\n  - ".join(missing)
                 + "\n\nThose stay blank on the worksheet.  Build anyway?"):
             return
+        if not self.warn_shortages(["isolation"]):
+            return
 
         def work():
             written = self._produce(["isolation"], spec, None)
             if written:
                 self.built["isolation"] = written[0]
-            self.remember_consumables()
+            self.remember_consumables(["isolation"], count_proteing=True)
             self.save_state(["isolation"])
             self.app.say("")
             self.app.say(f"Saved into {spec['out']}")
@@ -635,6 +1059,8 @@ class PlateRunPanel(ttk.Frame):
                 "amount of dried IgG cannot be worked out, and the concentration "
                 "workbook cannot be built.")
             return
+        if not self.warn_shortages(["deglyco", "cleanup"]):
+            return
 
         def work():
             wb = os.path.join(spec["out"], f"{spec['batch'] or 'plate'}.xlsx")
@@ -649,7 +1075,7 @@ class PlateRunPanel(ttk.Frame):
             written = self._produce(["deglyco", "cleanup"], spec, avg)
             for key, path in zip(["deglyco", "cleanup"], written):
                 self.built[key] = path
-            self.remember_consumables()
+            self.remember_consumables(["deglyco", "cleanup"])
             self.save_state(["deglyco", "cleanup"])
             self.app.say("")
             self.app.say(f"Saved {len(written) + 1} files into {spec['out']}")

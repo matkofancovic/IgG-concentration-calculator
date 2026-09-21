@@ -29,6 +29,32 @@ ROWS = "ABCDEFGH"
 FONT = "Helvetica"
 INK = (0.05, 0.15, 0.55)        # dark blue, so filled values read as added
 
+
+def _grid_fonts():
+    """-> (regular, bold) font names for the plate grid.
+
+    Helvetica at 4pt in a 40x15pt cell is cramped and hard to read on paper,
+    which is the whole complaint about the printed grid.  Segoe UI is on
+    every Windows PC in the lab, is narrower per character at small sizes and
+    has a taller x-height, so the same name fits with room to spare and still
+    reads.  It is loaded from the system rather than bundled - no font is
+    redistributed with the exe - and Helvetica stands in if it is not there.
+    """
+    try:
+        from reportlab.pdfbase import pdfmetrics as _pm
+        from reportlab.pdfbase.ttfonts import TTFont
+        win = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+        pairs = (("GridSans", "segoeui.ttf"), ("GridSans-Bold", "seguisb.ttf"))
+        for name, fn in pairs:
+            if name not in _pm.getRegisteredFontNames():
+                _pm.registerFont(TTFont(name, os.path.join(win, fn)))
+        return "GridSans", "GridSans-Bold"
+    except Exception:
+        return "Helvetica", "Helvetica-Bold"
+
+
+GRID_FONT, GRID_FONT_BOLD = _grid_fonts()
+
 # where the blank worksheets live, and the document code of each
 WS_DIR = r"\\10.70.119.100\Glikobiologija\SOPs and WS\WSs"
 WS_CODES = {"isolation": "GBL-WS-031",
@@ -300,22 +326,43 @@ def cell_boxes(cols, rows, rects):
 # ------------------------------------------------------------------ filling
 
 def _draw_grid(c, cols, rows, size_hdr, layout, colours=None, boxes=None):
-    """Sample names into the plate grid, shrunk per cell to fit.
+    """Sample names into the plate grid.
 
     `colours` paints each well the colour the Pippeting List gives it, so the
-    printed grid reads like the Excel plate map.  The fill is inset by a hair
-    to leave the worksheet's own printed cell borders showing, and the text
-    ink flips to white on the dark fills.
+    printed grid reads like the Excel plate map.
+
+    Each name is set in the largest size that still leaves a real margin
+    inside its cell, and is centred in the cell box both ways rather than
+    dropped on the row-letter baseline - the old version ran names hard into
+    the cell walls and sat them low, which is what made the printed grid look
+    cramped.  Standards and blanks are set bold so the plate's landmarks read
+    at a glance.
     """
     colours = colours or {}
     boxes = boxes or {}
     gaps = [cols[i + 1] - cols[i] for i in range(len(cols) - 1)]
     cell_w = min(gaps) if gaps else 39.0
 
+    ascent = pdfmetrics.getAscent(GRID_FONT) / 1000.0
+    descent = pdfmetrics.getDescent(GRID_FONT) / 1000.0     # negative
+
+    def font_for(name):
+        landmark = name.startswith("STAND_") or name.lower().startswith("blank")
+        return GRID_FONT_BOLD if landmark else GRID_FONT
+
+    # One size for the whole grid.  Sizing each cell to its own width makes
+    # the columns ragged, because the worksheet's columns are not all the
+    # same width - so take the largest size that fits every name in its own
+    # cell and use it throughout.
+    size = 5.4
+    while size > 3.0:
+        if all(pdfmetrics.stringWidth(n, font_for(n), size)
+               <= (boxes[w][2] if w in boxes else cell_w) - 4.0
+               for w, n in layout.items() if n and w in boxes):
+            break
+        size -= 0.1
+
     for ci, cx in enumerate(cols, start=1):
-        digits = len(str(ci))
-        centre = cx + pdfmetrics.stringWidth(str(ci), FONT, size_hdr) / 2 \
-            if digits else cx
         for r in ROWS:
             well = f"{r}{ci}"
             name = layout.get(well)
@@ -325,17 +372,24 @@ def _draw_grid(c, cols, rows, size_hdr, layout, colours=None, boxes=None):
             if rgb and box:
                 x0, y0, w, h = box
                 c.setFillColorRGB(*layout_colours.to_float(rgb))
-                c.rect(x0 + 0.6, y0 + 0.6, w - 1.2, h - 1.2, stroke=0, fill=1)
+                c.rect(x0 + 0.35, y0 + 0.35, w - 0.7, h - 0.7, stroke=0, fill=1)
 
             if not name:
                 continue
+
+            font = font_for(name)
+            if box:
+                x0, y0, w, h = box
+                mid_x = x0 + w / 2.0
+                # centre the glyph body, not the em box
+                base_y = y0 + (h - (ascent - descent) * size) / 2.0 - descent * size
+            else:
+                mid_x = cx + pdfmetrics.stringWidth(str(ci), FONT, size_hdr) / 2
+                base_y = rows[r] - 1.0
+
             c.setFillColorRGB(*(layout_colours.readable_ink(rgb) if rgb else INK))
-            width = (box[2] if box else cell_w)
-            size = 4.6
-            while size > 2.4 and pdfmetrics.stringWidth(name, FONT, size) > width - 3:
-                size -= 0.1
-            c.setFont(FONT, size)
-            c.drawCentredString(centre, rows[r] - 1.0, name)
+            c.setFont(font, size)
+            c.drawCentredString(mid_x, base_y, name)
 
     c.setFillColorRGB(*INK)
 

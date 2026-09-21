@@ -67,6 +67,26 @@ forgets a plate without touching any file it produced.
 If a Pippeting List has been moved or renamed since, opening the plate says
 so and Browse relinks it.
 
+### Worksheet and storage numbers
+
+They are taken in a run, so only the first is worth typing. Put `GA3084` in
+the first box, press **Fill ↓**, and the rest follow - `GA3085`, `GA3086`.
+The prefix and the digit width are kept, so `GA0099` steps to `GA0100`. If
+the first entry does not end in a number there is nothing to count from, and
+it says so rather than guessing.
+
+### Protein G plate - counted, not typed
+
+*How many times has this Protein G plate been used?* is no longer a box to
+fill in. The program counts it: the number of distinct GA batches that plate
+has been used on, across every analyst, because the count lives on the share.
+Pick the plate number and the form says
+
+    used on 6 plate(s) so far  →  this plate is no. 7
+
+Rebuilding a worksheet for the same plate does not inflate the count, and two
+analysts running two different plates both add to it.
+
 ### It remembers
 
 **Per plate** - everything entered is filed under the GA batch number, so day
@@ -100,6 +120,37 @@ per PNGase F vial size. Pick 30 µg or 50 µg and only that line is filled.
 Anything left empty stays empty on the printed worksheet for you to write in -
 including every solution date at once, via *Skip these and fill the tables in
 by hand after printing*.
+
+## The solution library
+
+One central list the whole lab fills and reads. Whoever makes a solution
+records the batch; everyone else draws on it.
+
+| Column | What it is |
+|---|---|
+| **Needs / plate** | how much one plate uses. Set once, per solution, shared |
+| **In stock** | what is left across all recorded batches |
+| **Plates left** | stock ÷ needs per plate |
+| **Batch prepared / By** | the batch currently being drawn from, and who made it |
+
+*I made a batch...* records a new one - date, how many mL, initials.
+*Set amount per plate...* sets the requirement.
+
+Building a plate draws one plate's worth of every solution that worksheet
+uses. That is keyed to the GA batch, so rebuilding the same plate's worksheet
+does not double-count, and two analysts on two plates both count.
+
+Before it builds, anything that cannot cover one more plate is named:
+
+    There is not enough of:
+      - 30mM APTS: 3 mL left, this plate needs 5 mL
+
+Red in the list means not enough for one plate, amber means this is the last
+one. A solution with no *needs per plate* set is never judged - the program
+does not guess a requirement it was not told.
+
+The date written onto the worksheet's solutions table is the prepared date of
+the batch in use, so the paperwork follows the stock automatically.
 
 ## What it does
 
@@ -155,6 +206,15 @@ than estimated from where the row letters sit, so the colour lands inside the
 printed cell rather than near it. All 96 cells resolve exactly on all three
 worksheets; if a revised worksheet ever stopped resolving, the names are
 still written and the report says the colours were skipped.
+
+**Typography.** The names are set in Segoe UI, taken from the system rather
+than bundled (Helvetica stands in if it is missing). One size is chosen for
+the whole grid - the largest that fits every name with real margin in its own
+cell - because sizing each cell to its own width makes the columns ragged,
+the worksheet's columns not all being the same width. Each name is centred in
+its cell box both ways rather than dropped on the row-letter baseline, and
+standards and blanks are set in the semibold weight so the plate's landmarks
+read at a glance.
 
 Wells are classified from their **names** in the layout, not their positions —
 the plate is randomized per run, so position carries no information:

@@ -39,12 +39,13 @@ LOCAL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
 CONSUMABLES_FILE = "consumables.json"
 RUNS_FILE = "runs.json"
 
-# The consumables the program offers a remembered value for.
+# The consumables the program offers a remembered value for.  'Times this
+# Protein G plate has been used' is deliberately NOT here: it is counted from
+# the plates the lab has actually run, not typed in - see proteing_uses().
 #   key            label shown in the form                     keeps history
 CONSUMABLE_FIELDS = [
     ("wwptfe_lot",           "wwPTFE plate LOT no.",              True),
     ("proteing_no",          "Protein G monolithic plate (No.)",  True),
-    ("proteing_uses",        "Times this Protein G plate used",   False),
     ("enzyme_lot",           "PNGase F enzyme LOT",               True),
     ("enzyme_reconstituted", "Enzyme date of reconstitution",     False),
 ]
@@ -158,19 +159,175 @@ class Store:
             data[key] = rec
         self._write(CONSUMABLES_FILE, merge)
 
-    def solutions(self):
-        """-> {solution name: date of preparation}"""
-        return self._read(CONSUMABLES_FILE).get("_solutions", {})
+    # -- Protein G plate use count ----------------------------------------
 
-    def remember_solution(self, name, date):
-        date = (date or "").strip()
+    def proteing_uses(self, plate_no):
+        """-> how many plates this Protein G plate has been used for.
+
+        Counted, not typed.  The count is the number of distinct GA batches
+        the plate has been used on, so rebuilding a worksheet does not
+        inflate it and two analysts running different plates both count.
+        """
+        plate_no = (plate_no or "").strip()
+        if not plate_no:
+            return 0
+        rec = self._read(CONSUMABLES_FILE).get("_proteing", {}).get(plate_no)
+        return len(rec.get("batches", [])) if isinstance(rec, dict) else 0
+
+    def record_proteing_use(self, plate_no, batch, who=""):
+        """Note that `plate_no` was used for `batch`. -> the new count."""
+        plate_no = (plate_no or "").strip()
+        batch = (batch or "").strip()
+        if not plate_no or not batch:
+            return self.proteing_uses(plate_no)
+
+        def merge(data):
+            plates = data.setdefault("_proteing", {})
+            rec = plates.setdefault(plate_no, {"batches": []})
+            if batch not in rec["batches"]:
+                rec["batches"].append(batch)
+            rec["last_used"] = datetime.date.today().isoformat()
+            if who:
+                rec["by"] = who
+        self._write(CONSUMABLES_FILE, merge)
+        return self.proteing_uses(plate_no)
+
+    def proteing_plates(self):
+        """-> {plate no: use count} for every Protein G plate seen."""
+        plates = self._read(CONSUMABLES_FILE).get("_proteing", {})
+        return {k: len(v.get("batches", [])) for k, v in plates.items()
+                if isinstance(v, dict)}
+
+    # -- solution library --------------------------------------------------
+    #
+    # A solution is made in a batch by one analyst and then drawn down by
+    # every plate the lab runs.  So the library holds, per solution, how much
+    # one plate needs and the batches currently in the fridge.  Anyone can
+    # add a batch; everyone sees the stock.
+
+    def solution_library(self):
+        """-> {name: {'per_plate_ml': float, 'batches': [...]}}"""
+        lib = self._read(CONSUMABLES_FILE).get("_solutions", {})
+        out = {}
+        for name, rec in lib.items():
+            if isinstance(rec, dict) and "batches" in rec:
+                out[name] = rec
+            elif isinstance(rec, str):
+                # the v1.5 shape was {name: date} - carry it forward as a
+                # batch of unknown size so nothing entered then is lost
+                out[name] = {"per_plate_ml": 0.0,
+                             "batches": [{"prepared": rec, "by": "",
+                                          "made_ml": 0.0, "remaining_ml": 0.0,
+                                          "used_by": []}]}
+        return out
+
+    def solutions(self):
+        """-> {name: date of the batch in use}, for filling the worksheets."""
+        out = {}
+        for name, rec in self.solution_library().items():
+            b = self._active_batch(rec)
+            if b:
+                out[name] = b.get("prepared", "")
+        return out
+
+    @staticmethod
+    def _active_batch(rec):
+        """The batch to draw from: oldest one that still has stock."""
+        batches = [b for b in rec.get("batches", []) if isinstance(b, dict)]
+        with_stock = [b for b in batches if float(b.get("remaining_ml") or 0) > 0]
+        return (with_stock or batches or [None])[0]
+
+    def set_per_plate(self, name, ml):
+        """How much of `name` one plate needs.  Set once, shared by everyone."""
+        def merge(data):
+            rec = data.setdefault("_solutions", {}).setdefault(
+                name, {"per_plate_ml": 0.0, "batches": []})
+            if not isinstance(rec, dict) or "batches" not in rec:
+                rec = {"per_plate_ml": 0.0, "batches": []}
+                data["_solutions"][name] = rec
+            rec["per_plate_ml"] = float(ml or 0)
+        self._write(CONSUMABLES_FILE, merge)
+
+    def add_solution_batch(self, name, prepared, made_ml, who=""):
+        """Record a solution someone made.  Visible to the whole lab."""
         def merge(data):
             sols = data.setdefault("_solutions", {})
-            if date:
-                sols[name] = date
-            else:
-                sols.pop(name, None)
+            rec = sols.get(name)
+            if not isinstance(rec, dict) or "batches" not in rec:
+                rec = {"per_plate_ml": 0.0, "batches": []}
+                sols[name] = rec
+            rec["batches"].insert(0, {
+                "prepared": (prepared or "").strip(),
+                "by": who,
+                "made_ml": float(made_ml or 0),
+                "remaining_ml": float(made_ml or 0),
+                "used_by": [],
+                "added": datetime.datetime.now().isoformat(timespec="seconds"),
+            })
+            del rec["batches"][12:]          # keep the history readable
         self._write(CONSUMABLES_FILE, merge)
+
+    def stock_ml(self, name):
+        rec = self.solution_library().get(name) or {}
+        return sum(float(b.get("remaining_ml") or 0)
+                   for b in rec.get("batches", []) if isinstance(b, dict))
+
+    def plates_left(self, name):
+        """-> how many more plates the stock covers, or None if unknown."""
+        rec = self.solution_library().get(name) or {}
+        per = float(rec.get("per_plate_ml") or 0)
+        if per <= 0:
+            return None
+        return int(self.stock_ml(name) // per)
+
+    def shortages(self, names):
+        """-> [(name, stock_ml, per_plate_ml)] that cannot cover one plate."""
+        short = []
+        for n in names:
+            rec = self.solution_library().get(n) or {}
+            per = float(rec.get("per_plate_ml") or 0)
+            if per <= 0:
+                continue                      # requirement not set - can't judge
+            have = self.stock_ml(n)
+            if have < per:
+                short.append((n, have, per))
+        return short
+
+    def consume(self, names, batch, who=""):
+        """Draw one plate's worth of each solution down. -> [(name, left)].
+
+        Keyed by the GA batch, so rebuilding a worksheet for the same plate
+        does not double-count, and two analysts on two plates both count.
+        """
+        batch = (batch or "").strip()
+        if not batch:
+            return []
+
+        def merge(data):
+            sols = data.setdefault("_solutions", {})
+            for n in names:
+                rec = sols.get(n)
+                if not isinstance(rec, dict) or "batches" not in rec:
+                    continue
+                per = float(rec.get("per_plate_ml") or 0)
+                if per <= 0:
+                    continue
+                if any(batch in b.get("used_by", [])
+                       for b in rec["batches"] if isinstance(b, dict)):
+                    continue                  # this plate already drew its share
+                need = per
+                for b in rec["batches"]:
+                    if not isinstance(b, dict) or need <= 0:
+                        continue
+                    have = float(b.get("remaining_ml") or 0)
+                    if have <= 0:
+                        continue
+                    take = min(have, need)
+                    b["remaining_ml"] = round(have - take, 2)
+                    b.setdefault("used_by", []).append(batch)
+                    need -= take
+        self._write(CONSUMABLES_FILE, merge)
+        return [(n, self.stock_ml(n)) for n in names]
 
     # -- per-plate run state ----------------------------------------------
 
