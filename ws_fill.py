@@ -30,6 +30,13 @@ ROWS = "ABCDEFGH"
 FONT = "Helvetica"
 INK = (0.05, 0.15, 0.55)        # dark blue, so filled values read as added
 
+# How big the values written onto a worksheet are.  Big enough to read on a
+# printed page at arm's length on the bench; the plate grid is sized
+# separately in _draw_grid, because 96 sample names have to fit in 96 cells.
+VALUE_SIZE = 11.0
+TABLE_SIZE = 10.0
+MIN_SIZE = 6.0
+
 
 def _grid_fonts():
     """-> (regular, bold) font names for the plate grid.
@@ -297,7 +304,7 @@ def find_label_box(items, rects, label, near_x=None):
             if best is None or x0 < best[0]:
                 best = (x0, y0, w, h)
         if best:
-            return best[0] + 4, y
+            return best[0] + 4, y, best[2] - 8
     return None
 
 
@@ -323,8 +330,73 @@ def find_label_box_left(items, rects, label):
             if best is None or bx > best[0]:
                 best = (bx, by, bw, bh)
         if best:
-            return best[0] + 5, y
+            return best[0] + 5, y, best[2] - 9
     return None
+
+
+def label_start_x(items, label, near_x=None):
+    """-> x of the first run on the line carrying `label`, or None."""
+    target = squash(label)
+    for y, parts in lines(items):
+        if target not in squash(" ".join(p[2] for p in parts)):
+            continue
+        if near_x is not None and abs(parts[0][0] - near_x) > 60:
+            continue
+        return parts[0][0]
+    return None
+
+
+def snap_into_box(rects, x, y, label_x):
+    """-> (x, room) moved to the left edge of the ruled box (x, y) sits in.
+
+    Two fields in identically sized boxes looked different sizes, because a
+    longer label pushed its value further right and left less room to shrink
+    into.  Starting at the box edge gives both the whole box.
+
+    Not done when the label itself is inside the box - 'No.' and 'Date:' are
+    printed inside theirs, and moving the value to the edge would write it
+    straight over the label.
+    """
+    best = None
+    for (bx, by, bw, bh) in rects:
+        if not (bx - 2 <= x <= bx + bw and by - 3 <= y <= by + bh + 2):
+            continue
+        if best is None or bw < best[2]:
+            best = (bx, by, bw, bh)
+    if best is None:
+        return x, None
+    bx, _by, bw, _bh = best
+    if label_x is not None and bx - 2 <= label_x <= bx + bw:
+        return x, max(bx + bw - x - 3, 0)      # label shares the box
+    return bx + 4, max(bw - 8, 0)
+
+
+def room_at(rects, x, y):
+    """-> width from x to the right edge of the box (x, y) sits in, or None.
+
+    Lets a value written into a small ruled box shrink to fit it, rather than
+    running out past the printed border.
+    """
+    best = None
+    for (bx, by, bw, bh) in rects:
+        if not (bx - 2 <= x <= bx + bw and by - 3 <= y <= by + bh + 2):
+            continue
+        if best is None or bw < best[2]:
+            best = (bx, by, bw, bh)
+    if best is None:
+        return None
+    return max(best[0] + best[2] - x - 3, 0)
+
+
+def draw_value(c, x, y, text, size=VALUE_SIZE, avail=None, font=FONT):
+    """Write `text` at `size`, stepping down only if it would overrun `avail`."""
+    text = str(text)
+    if avail:
+        while size > MIN_SIZE and pdfmetrics.stringWidth(text, font, size) > avail:
+            size -= 0.25
+    c.setFont(font, size)
+    c.drawString(x, y, text)
+    return size
 
 
 def find_tickbox(items, rects, option):
@@ -603,8 +675,9 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
                 missing.append(f"p{pno + 1} {label!r}")
                 continue
             x, y = spot
-            c.setFont(FONT, 9)
-            c.drawString(x, y, str(val))
+            x, avail = snap_into_box(page_rects(page, reader), x, y,
+                                     label_start_x(items, label, near_x))
+            draw_value(c, x, y, val, avail=avail)
             placed += 1
             drew = True
 
@@ -629,9 +702,10 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
             if spot is None:
                 missing.append(f"p{pno + 1} {label!r}")
                 continue
-            x, y = spot
-            c.setFont(FONT, 9)
-            c.drawString(x, y, str(val))
+            x, y, avail = (spot + (None,))[:3]
+            if avail is None:
+                avail = room_at(page_rects(page, reader), x, y)
+            draw_value(c, x, y, val, avail=avail)
             placed += 1
             drew = True
 
@@ -645,8 +719,8 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
                 missing.append(f"p{pno + 1} {row_label!r} / {col_label!r}")
                 continue
             x, y = spot
-            c.setFont(FONT, 8)
-            c.drawString(x, y, str(val))
+            draw_value(c, x, y, val, size=TABLE_SIZE,
+                       avail=room_at(page_rects(page, reader), x, y))
             placed += 1
             drew = True
 

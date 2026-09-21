@@ -297,6 +297,17 @@ printed cell rather than near it. All 96 cells resolve exactly on all three
 worksheets; if a revised worksheet ever stopped resolving, the names are
 still written and the report says the colours were skipped.
 
+**Size of everything else.** Values written into the worksheet's own fields
+are 11pt and the buffer/solution tables 10pt - big enough to read on paper at
+the bench. A value goes in at the left edge of its ruled box so two fields in
+identical boxes look identical, and shrinks (down to 6pt) only if it would
+otherwise run past the printed border. Where the label is printed *inside*
+the box - `No.`, `Date:` - the value stays put rather than being written over
+the label.
+
+The plate grid is sized separately and is unaffected: 96 sample names have to
+fit in 96 cells, so it gets as much as it can and no more.
+
 **Typography.** The names are set in Segoe UI, taken from the system rather
 than bundled (Helvetica stands in if it is missing). One size is chosen for
 the whole grid - the largest that fits every name with real margin in its own
