@@ -28,6 +28,7 @@ python -m PyInstaller ^
   --hidden-import plate_run ^
   --hidden-import store ^
   --hidden-import layout_colours ^
+  --collect-all sv_ttk ^
   --noconfirm --clean ^
   igg_conc_gui.py
 

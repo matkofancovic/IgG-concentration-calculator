@@ -45,49 +45,59 @@ HAIRLINE   = "#d7dce2"
 
 
 def apply_theme(root):
-    """Make it look like a program rather than a Tk demo.
+    """Make it look like a program written this decade.
 
-    Tk's defaults are a 1990s bitmap font on grey.  The lab runs Windows, so
-    Segoe UI is always there; setting it once on the named fonts fixes every
-    widget at once, including the ones ttk styles do not reach.
+    ttk's Windows themes are the ones Explorer shipped with in about 2009 -
+    grey boxes, hairline borders, 8pt Tahoma.  sv_ttk is the Sun Valley
+    theme: the same ttk widgets restyled to match Windows 11, in 0.1 MB of
+    Tcl.  It is bundled with the exe.  If it is ever missing the old vista
+    theme still works, so nothing breaks - it just looks like it used to.
     """
     try:
         import tkinter.font as tkfont
-        for name, size, weight in (("TkDefaultFont", 9, "normal"),
-                                   ("TkTextFont", 9, "normal"),
-                                   ("TkMenuFont", 9, "normal"),
-                                   ("TkHeadingFont", 9, "bold")):
-            f = tkfont.nametofont(name)
-            f.configure(family="Segoe UI", size=size, weight=weight)
-        tkfont.nametofont("TkFixedFont").configure(family="Consolas", size=9)
+        for name, size, weight in (("TkDefaultFont", 10, "normal"),
+                                   ("TkTextFont", 10, "normal"),
+                                   ("TkMenuFont", 10, "normal"),
+                                   ("TkHeadingFont", 10, "bold")):
+            tkfont.nametofont(name).configure(family="Segoe UI", size=size,
+                                              weight=weight)
+        tkfont.nametofont("TkFixedFont").configure(family="Consolas", size=10)
     except Exception:
         pass
 
-    style = ttk.Style(root)
-    for theme in ("vista", "winnative", "clam"):
-        try:
-            style.theme_use(theme)
-            break
-        except tk.TclError:
-            continue
+    modern = False
+    try:
+        import sv_ttk
+        sv_ttk.set_theme("light")
+        modern = True
+    except Exception:
+        style = ttk.Style(root)
+        for theme in ("vista", "winnative", "clam"):
+            try:
+                style.theme_use(theme)
+                break
+            except tk.TclError:
+                continue
 
-    style.configure(".", foreground=INK)
-    style.configure("TLabelframe", borderwidth=1, relief="solid",
-                    bordercolor=HAIRLINE, padding=10)
-    style.configure("TLabelframe.Label", foreground=ACCENT,
-                    font=("Segoe UI Semibold", 9))
+    style = ttk.Style(root)
     style.configure("Muted.TLabel", foreground=MUTED)
-    style.configure("Head.TLabel", foreground=ACCENT,
-                    font=("Segoe UI Semibold", 11))
-    style.configure("Sub.TLabel", foreground=MUTED, font=("Segoe UI", 9))
+    style.configure("Head.TLabel", foreground=INK,
+                    font=("Segoe UI Semibold", 15))
+    style.configure("Sub.TLabel", foreground=MUTED, font=("Segoe UI", 10))
     style.configure("Good.TLabel", foreground=OK_GREEN)
     style.configure("Warn.TLabel", foreground=WARN_AMBER)
     style.configure("Bad.TLabel", foreground=BAD_RED)
-    style.configure("Treeview", rowheight=21, borderwidth=1, relief="solid",
-                    bordercolor=HAIRLINE)
-    style.configure("Treeview.Heading", font=("Segoe UI Semibold", 9))
-    style.configure("Primary.TButton", font=("Segoe UI Semibold", 9), padding=(12, 5))
-    style.configure("TButton", padding=(9, 4))
+    style.configure("Section.TLabel", foreground=ACCENT,
+                    font=("Segoe UI Semibold", 11))
+    style.configure("Treeview", rowheight=26)
+    if not modern:
+        style.configure("TLabelframe", borderwidth=1, relief="solid",
+                        bordercolor=HAIRLINE, padding=10)
+        style.configure("TLabelframe.Label", foreground=ACCENT,
+                        font=("Segoe UI Semibold", 10))
+        style.configure("Accent.TButton", font=("Segoe UI Semibold", 10),
+                        padding=(12, 5))
+    root.configure(background=style.lookup("TFrame", "background") or "#f3f3f3")
     return style
 
 
@@ -262,7 +272,7 @@ class PlateList(ttk.Frame):
     """Every plate seen so far, newest first, with how far each one got."""
 
     def __init__(self, parent, on_pick, store):
-        super().__init__(parent, padding=(10, 12, 6, 12))
+        super().__init__(parent, padding=(14, 14, 8, 14))
         self.on_pick = on_pick
         self.store = store
         self.rowconfigure(1, weight=1)
@@ -274,9 +284,9 @@ class PlateList(ttk.Frame):
         self.tree = ttk.Treeview(self, columns=("state",), show="tree headings",
                                  selectmode="browse", height=18)
         self.tree.heading("#0", text="GA batch")
-        self.tree.heading("state", text="")
-        self.tree.column("#0", width=160, stretch=True)
-        self.tree.column("state", width=34, stretch=False, anchor="center")
+        self.tree.heading("state", text="•")
+        self.tree.column("#0", width=170, stretch=True)
+        self.tree.column("state", width=40, stretch=False, anchor="center")
         self.tree.grid(row=1, column=0, sticky="nsew")
         sb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         sb.grid(row=1, column=1, sticky="ns")
@@ -571,7 +581,7 @@ class PlateRunPanel(ttk.Frame):
         self.sol_tree = ttk.Treeview(s, columns=cols, show="tree headings",
                                      selectmode="browse", height=16)
         self.sol_tree.heading("#0", text="Solution")
-        for c, t, w in (("need", "Needs / plate", 90), ("stock", "In stock", 80),
+        for c, t, w in (("need", "Needs / plate", 118), ("stock", "In stock", 92),
                         ("left", "Plates left", 80),
                         ("prepared", "Batch prepared", 110), ("by", "By", 50)):
             self.sol_tree.heading(c, text=t)
@@ -590,8 +600,10 @@ class PlateRunPanel(ttk.Frame):
                    command=self.set_per_plate).grid(row=0, column=1, padx=(6, 0))
         ttk.Button(btns, text="Refresh", command=self.refresh_solutions).grid(
             row=0, column=2, padx=(6, 0))
+        ttk.Button(btns, text="Where does (calc) come from?",
+                   command=self.explain_calc).grid(row=0, column=3, padx=(6, 0))
         ttk.Label(btns, text="   red = not enough for one plate,  amber = last plate",
-                  style="Muted.TLabel").grid(row=0, column=3, padx=(10, 0))
+                  style="Muted.TLabel").grid(row=0, column=4, padx=(10, 0))
 
         # the dates that go on the worksheets come from the batch in use
         for key, _, _n in ws_sheets.WORKSHEETS:
@@ -625,24 +637,28 @@ class PlateRunPanel(ttk.Frame):
                                         tags=("head",), open=True)
             for sol in sols:
                 rec = lib.get(sol) or {}
-                per = float(rec.get("per_plate_ml") or 0)
+                per, source = self.store.per_plate(sol)
                 stock = self.store.stock_ml(sol)
                 left = self.store.plates_left(sol)
                 batch = self.store._active_batch(rec) or {}
                 prepared = batch.get("prepared", "")
                 self.sol_vars.setdefault(sol, tk.StringVar()).set(prepared)
 
+                known = self.store.has_batches(sol)
                 tag = ""
-                if per > 0:
+                if not known:
+                    tag = "head"              # nobody has recorded one yet
+                elif per > 0:
                     if stock < per:
                         tag = "short"
                     elif left is not None and left <= 1:
                         tag = "low"
                 iid = self.sol_tree.insert(
                     head, "end", text="   " + store_mod.SOLUTION_LABELS.get(sol, sol),
-                    values=(f"{per:g} mL" if per else "-",
-                            f"{stock:g} mL" if stock else "-",
-                            "-" if left is None else str(left),
+                    values=(f"{per:g} mL" + (" (calc)" if source == "calculated"
+                                             else "") if per else "-",
+                            f"{stock:g} mL" if known else "not recorded",
+                            "-" if (left is None or not known) else str(left),
                             prepared or "-", batch.get("by", "") or "-"),
                     tags=(tag,) if tag else ())
                 self._sol_rows[iid] = sol
@@ -658,6 +674,28 @@ class PlateRunPanel(ttk.Frame):
                             self.initials_var.get().strip().upper(),
                             on_done=self.refresh_solutions)
 
+    def explain_calc(self):
+        """Show how each calculated requirement was arrived at."""
+        self.app.clear()
+        self.app.say("Amount per plate, worked out from the worksheet steps")
+        self.app.say(f"for a {store_mod.PLATE_WELLS}-well plate, "
+                     f"plus {int(store_mod.OVERAGE * 100)}% for dead volume "
+                     f"and priming:")
+        self.app.say("")
+        for ws_name, sols in self._all_solutions():
+            self.app.say(f"  {ws_name}")
+            for sol in sols:
+                per, source = self.store.per_plate(sol)
+                label = store_mod.SOLUTION_LABELS.get(sol, sol)
+                if source == "set":
+                    self.app.say(f"    {label:<24} {per:g} mL   (set by hand)")
+                elif source == "calculated":
+                    self.app.say(f"    {label:<24} {store_mod.recipe_note(sol)}")
+                else:
+                    self.app.say(f"    {label:<24} not known")
+            self.app.say("")
+        self.app.say("Set amount per plate... overrides any of these.")
+
     def set_per_plate(self):
         sol = self.selected_solution()
         if not sol:
@@ -665,9 +703,13 @@ class PlateRunPanel(ttk.Frame):
                                 "Select a solution, then press 'Set amount per "
                                 "plate...'.")
             return
-        cur = (self.store.solution_library().get(sol) or {}).get("per_plate_ml", 0)
-        ml = _ask_float(self, f"How much {store_mod.SOLUTION_LABELS.get(sol, sol)} "
-                              f"does one plate need?", "mL per plate", cur)
+        cur, source = self.store.per_plate(sol)
+        note = store_mod.recipe_note(sol)
+        prompt = (f"How much {store_mod.SOLUTION_LABELS.get(sol, sol)} "
+                  f"does one plate need?")
+        if note and source == "calculated":
+            prompt += "\n\nFrom the worksheet: " + note
+        ml = _ask_float(self, prompt, "mL per plate", cur)
         if ml is not None:
             self.store.set_per_plate(sol, ml)
             self.refresh_solutions()
@@ -681,7 +723,7 @@ class PlateRunPanel(ttk.Frame):
         ttk.Label(day1, text="Day 1", width=8, style="Muted.TLabel").grid(
             row=0, column=0, sticky="w")
         self.iso_btn = ttk.Button(day1, text="IgG isolation worksheet",
-                                  style="Primary.TButton",
+                                  style="Accent.TButton",
                                   command=self.build_isolation)
         self.iso_btn.grid(row=0, column=1)
         ttk.Button(day1, text="Open", width=7,
@@ -696,7 +738,7 @@ class PlateRunPanel(ttk.Frame):
         ttk.Label(day2, text="Day 2", width=8, style="Muted.TLabel").grid(
             row=0, column=0, sticky="w")
         self.day2_btn = ttk.Button(day2, text="Workbook + deglyco + clean up",
-                                   style="Primary.TButton",
+                                   style="Accent.TButton",
                                    command=self.build_day2)
         self.day2_btn.grid(row=0, column=1)
         ttk.Button(day2, text="Print deglyco", command=lambda:
@@ -980,8 +1022,7 @@ class PlateRunPanel(ttk.Frame):
         if keys and not self.skip_solutions.get():
             for name, left in self.store.consume(self.solutions_for(keys),
                                                  batch, who):
-                per = (self.store.solution_library().get(name) or {}).get(
-                    "per_plate_ml") or 0
+                per, _src = self.store.per_plate(name)
                 if per:
                     self.app.say(f"  {store_mod.SOLUTION_LABELS.get(name, name)}: "
                                  f"{left:g} mL left")

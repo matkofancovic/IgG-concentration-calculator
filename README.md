@@ -128,13 +128,37 @@ records the batch; everyone else draws on it.
 
 | Column | What it is |
 |---|---|
-| **Needs / plate** | how much one plate uses. Set once, per solution, shared |
+| **Needs / plate** | how much one plate uses - see below. `(calc)` means worked out from the worksheet |
 | **In stock** | what is left across all recorded batches |
 | **Plates left** | stock ÷ needs per plate |
 | **Batch prepared / By** | the batch currently being drawn from, and who made it |
 
 *I made a batch...* records a new one - date, how many mL, initials.
-*Set amount per plate...* sets the requirement.
+*Set amount per plate...* overrides the requirement.
+
+### Where the per-plate amounts come from
+
+They are read off the worksheets, not guessed. Every pipetting step that
+consumes a solution is listed in `SOLUTION_RECIPE` with the step it came
+from, multiplied by 96 wells, plus **20%** for dead volume, priming a
+repeater tip and the odd repeat. *Where does (calc) come from?* prints the
+full derivation into the report, so any figure can be checked against the
+SOP:
+
+    1x PBS               800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
+    1xPBS (0,25M NaCl)  4000 uL/well x 96 = 384.00 mL, +20% = 460.8 mL
+    80% ACN / 100mM TEA  800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
+    30mM APTS            230 uL/plate = 0.23 mL, +20% = 0.28 mL
+
+A figure someone sets by hand always wins over the calculated one. If the
+SOP changes, edit the recipe - the steps are written out so it is obvious
+what to change.
+
+**A solution nobody has recorded a batch of is *unknown*, not empty.** It
+shows as `not recorded` and never blocks a build: the library starts blank,
+and crying shortage on all sixteen would be noise people learn to click
+through. Once a batch exists the stock is real and a shortage is worth
+stopping for.
 
 Building a plate draws one plate's worth of every solution that worksheet
 uses. That is keyed to the GA batch, so rebuilding the same plate's worksheet

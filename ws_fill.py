@@ -24,6 +24,7 @@ from reportlab.pdfbase import pdfmetrics
 
 import ws_sheets
 import layout_colours
+import store
 
 ROWS = "ABCDEFGH"
 FONT = "Helvetica"
@@ -526,13 +527,13 @@ CONSUMABLES = {
 
 # The 'Buffer / Solution | Date of preparation | Initials' tables.  Rows are
 # found by the solution's printed name, so the store keys read the same way.
+# Which page the table is on and what its first column is called.  The row
+# names come from store.SOLUTIONS so the library and the printed table can
+# never drift apart - they did once, and the date went on the wrong row.
 SOLUTION_TABLES = {
-    "isolation": (4, "Buffer", ["1x PBS", "1xPBS (0,25M NaCl)", "10x PBS",
-                                "0,1M FA", "1M AmBic", "Storage buffer"]),
-    "deglyco":   (2, "Solution", ["1,66x PBS", "0,5% SDS", "4% Igepal",
-                                  "5x PBS", "1,2M 2-PB", "30mM APTS"]),
-    "cleanup":   (2, "Solution", ["Biogel P10 slurry", "80 % ACN",
-                                  "80% ACN / 100mM TEA", "HiDi Formamide"]),
+    "isolation": (4, "Buffer"),
+    "deglyco":   (2, "Solution"),
+    "cleanup":   (2, "Solution"),
 }
 
 
@@ -609,7 +610,8 @@ def _solution_spec(key, solutions, initials):
     """
     if not solutions or key not in SOLUTION_TABLES:
         return {}
-    page, col_head, rows = SOLUTION_TABLES[key]
+    page, col_head = SOLUTION_TABLES[key]
+    rows = store.SOLUTIONS.get(key, [])
     out = []
     for row in rows:
         date = solutions.get(row)

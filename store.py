@@ -55,12 +55,113 @@ SOLUTIONS = {
     "isolation": ["1x PBS", "1xPBS (0,25M NaCl)", "10x PBS",
                   "0,1M FA", "1M AmBic", "Storage buffer"],
     "deglyco":   ["1,66x PBS", "0,5% SDS", "4% Igepal",
-                  "5x PBS", "1,2M 2", "30mM APTS"],
-    "cleanup":   ["Biogel P10 slurry", "80 % ACN", "80% ACN", "HiDi Formamide"],
+                  "5x PBS", "1,2M 2-PB", "30mM APTS"],
+    "cleanup":   ["Biogel P10 slurry", "80 % ACN",
+                  "80% ACN / 100mM TEA", "HiDi Formamide"],
 }
 # Printed row name -> what to call it in the form.
-SOLUTION_LABELS = {"1,2M 2": "1,2M 2-PB", "80 % ACN": "80% ACN",
-                   "80% ACN": "80% ACN / 100mM TEA"}
+SOLUTION_LABELS = {"1,2M 2-PB": "1,2M 2-PB",
+                   "80 % ACN": "80% ACN",
+                   "80% ACN / 100mM TEA": "80% ACN / 100mM TEA"}
+
+# ---------------------------------------------------------------------------
+#  How much of each solution one plate needs.
+#
+#  Read off the worksheets themselves rather than guessed, so the figures can
+#  be checked against the SOP.  Each entry is the steps that consume it:
+#  (microlitres, "well" or "plate", which step).  A 'well' step is multiplied
+#  by the number of wells on the plate.
+#
+#  OVERAGE is added on top for dead volume, priming a repeater tip and the
+#  odd repeat - a plate's worth of solution measured exactly is never enough
+#  in practice.
+# ---------------------------------------------------------------------------
+OVERAGE = 0.20
+PLATE_WELLS = 96
+
+SOLUTION_RECIPE = {
+    # --- IgG isolation, GBL-WS-031/07 ---
+    "1x PBS": [
+        (800, "well", "step 1.1/1.2 dilute each sample and the blank"),
+    ],
+    "1xPBS (0,25M NaCl)": [
+        (500, "well", "step 2 pre-conditioning wash"),
+        (1000, "well", "step 2 equilibrate"),
+        (500, "well", "step 3 wash x3"),
+        (500, "well", "step 3 wash x3"),
+        (500, "well", "step 3 wash x3"),
+        (1000, "well", "step 5 regeneration wash"),
+    ],
+    "10x PBS": [
+        (500, "well", "step 2 neutralize the plate"),
+        (500, "well", "step 5 regeneration wash"),
+    ],
+    "0,1M FA": [
+        (250, "well", "step 2 pre-conditioning wash"),
+        (250, "well", "step 4 elute IgG"),
+        (500, "well", "step 5 regeneration wash"),
+    ],
+    "1M AmBic": [
+        (42.5, "well", "step 4 neutralization buffer in the collection plate"),
+    ],
+    "Storage buffer": [
+        (250, "well", "step 5 vacuum to waste"),
+        (750, "well", "step 5 store at 4 C"),
+    ],
+    # --- Deglycosylation + APTS, GBL-WS-029/04 ---
+    "1,66x PBS":  [(3, "well", "step 1 add to each sample")],
+    "0,5% SDS":   [(4, "well", "step 1 add to each sample")],
+    "4% Igepal":  [(2, "well", "step 2 add to each sample")],
+    "5x PBS":     [(1, "well", "step 2 enzyme mixture, 1 uL per sample")],
+    "1,2M 2-PB":  [(230, "plate", "step 3 APTS/PB labelling mixture")],
+    "30mM APTS":  [(230, "plate", "step 3 APTS/PB labelling mixture")],
+    # --- HILIC-SPE clean-up, GBL-WS-030/04 ---
+    "Biogel P10 slurry": [
+        (200, "well", "step 2 load the wwPTFE plate"),
+    ],
+    "80 % ACN": [
+        (100, "well", "step 1 stop the labelling reaction"),
+        (200, "well", "step 2 pre-conditioning wash x2"),
+        (200, "well", "step 2 pre-conditioning wash x2"),
+        (200, "well", "step 3 clean-up wash"),
+    ],
+    "80% ACN / 100mM TEA": [
+        (200, "well", "step 3 wash x4"),
+        (200, "well", "step 3 wash x4"),
+        (200, "well", "step 3 wash x4"),
+        (200, "well", "step 3 wash x4"),
+    ],
+    "HiDi Formamide": [
+        (7, "well", "step 4 into each well of the reaction plate"),
+        (17, "plate", "step 4 the IgG pool column"),
+    ],
+}
+
+
+def derived_per_plate(name, wells=PLATE_WELLS, overage=OVERAGE):
+    """-> mL one plate needs, from the worksheet steps, plus the overage."""
+    steps = SOLUTION_RECIPE.get(name)
+    if not steps:
+        return None
+    ul = sum(v * (wells if per == "well" else 1) for v, per, _ in steps)
+    return round(ul * (1 + overage) / 1000.0, 2)
+
+
+def recipe_note(name, wells=PLATE_WELLS, overage=OVERAGE):
+    """A one-line explanation of where the figure came from."""
+    steps = SOLUTION_RECIPE.get(name)
+    if not steps:
+        return ""
+    ul = sum(v * (wells if per == "well" else 1) for v, per, _ in steps)
+    per_well = sum(v for v, per, _ in steps if per == "well")
+    per_plate = sum(v for v, per, _ in steps if per == "plate")
+    bits = []
+    if per_well:
+        bits.append(f"{per_well:g} uL/well x {wells}")
+    if per_plate:
+        bits.append(f"{per_plate:g} uL/plate")
+    return (f"{' + '.join(bits)} = {ul / 1000.0:.2f} mL, "
+            f"+{int(overage * 100)}% = {derived_per_plate(name, wells, overage):g} mL")
 
 
 class Store:
@@ -237,6 +338,20 @@ class Store:
         with_stock = [b for b in batches if float(b.get("remaining_ml") or 0) > 0]
         return (with_stock or batches or [None])[0]
 
+    def per_plate(self, name):
+        """-> (mL one plate needs, where it came from).
+
+        A figure someone set by hand wins; otherwise the one worked out from
+        the worksheet steps is used, so the library is useful the first time
+        it is opened rather than after somebody fills in sixteen numbers.
+        """
+        rec = self.solution_library().get(name) or {}
+        set_by_hand = rec.get("per_plate_ml")
+        if set_by_hand:
+            return float(set_by_hand), "set"
+        derived = derived_per_plate(name)
+        return (derived, "calculated") if derived else (0.0, "unknown")
+
     def set_per_plate(self, name, ml):
         """How much of `name` one plate needs.  Set once, shared by everyone."""
         def merge(data):
@@ -274,8 +389,7 @@ class Store:
 
     def plates_left(self, name):
         """-> how many more plates the stock covers, or None if unknown."""
-        rec = self.solution_library().get(name) or {}
-        per = float(rec.get("per_plate_ml") or 0)
+        per, _ = self.per_plate(name)
         if per <= 0:
             return None
         return int(self.stock_ml(name) // per)
@@ -284,14 +398,26 @@ class Store:
         """-> [(name, stock_ml, per_plate_ml)] that cannot cover one plate."""
         short = []
         for n in names:
-            rec = self.solution_library().get(n) or {}
-            per = float(rec.get("per_plate_ml") or 0)
+            per, _ = self.per_plate(n)
             if per <= 0:
-                continue                      # requirement not set - can't judge
+                continue                      # no requirement known - can't judge
+            if not self.has_batches(n):
+                continue                      # nobody has recorded this one yet
             have = self.stock_ml(n)
             if have < per:
                 short.append((n, have, per))
         return short
+
+    def has_batches(self, name):
+        """Whether anyone has ever recorded a batch of this.
+
+        A solution nobody has recorded is *unknown*, not empty - the library
+        starts out blank and crying shortage on all sixteen would be noise
+        the analysts would learn to click through.  Once a batch exists the
+        stock is tracked and a real shortage is worth stopping for.
+        """
+        rec = self.solution_library().get(name) or {}
+        return bool([b for b in rec.get("batches", []) if isinstance(b, dict)])
 
     def consume(self, names, batch, who=""):
         """Draw one plate's worth of each solution down. -> [(name, left)].
@@ -309,7 +435,8 @@ class Store:
                 rec = sols.get(n)
                 if not isinstance(rec, dict) or "batches" not in rec:
                     continue
-                per = float(rec.get("per_plate_ml") or 0)
+                per = float(rec.get("per_plate_ml") or 0) or (
+                    derived_per_plate(n) or 0)
                 if per <= 0:
                     continue
                 if any(batch in b.get("used_by", [])
