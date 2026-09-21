@@ -193,3 +193,35 @@ class Store:
         rows = sorted(data.items(), key=lambda kv: kv[1].get("saved", ""),
                       reverse=True)
         return [b for b, _ in rows[:limit]]
+
+    # The three worksheets a plate has to produce before it counts as done.
+    ALL_BUILT = ("isolation", "deglyco", "cleanup")
+
+    def plates(self, limit=200):
+        """-> [{batch, saved, built, layout, done}] newest first.
+
+        Feeds the plate list.  `done` means all three worksheets have been
+        built for that plate, which is as close as this program can get to
+        knowing a plate is finished - it never sees the bench.
+        """
+        data = self._read(RUNS_FILE)
+        rows = []
+        for batch, rec in data.items():
+            if not isinstance(rec, dict):
+                continue
+            built = [b for b in rec.get("built", []) if b]
+            rows.append({
+                "batch": batch,
+                "saved": rec.get("saved", ""),
+                "built": built,
+                "layout": rec.get("layout", ""),
+                "done": all(k in built for k in self.ALL_BUILT),
+            })
+        rows.sort(key=lambda r: r["saved"], reverse=True)
+        return rows[:limit]
+
+    def forget_run(self, batch):
+        """Drop a plate from the list (the files it produced are untouched)."""
+        def merge(data):
+            data.pop(batch, None)
+        self._write(RUNS_FILE, merge)

@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-GlycanAge IgG concentration builder - GUI.
+GlycanAge plate run - GUI.
 
-Pick the NanoDrop export (.txt) and the Pippeting List (.xlsx), press Build,
-and it writes the concentration workbook: Well / Sample ID / conc. / units,
-colour-coded, with the DBS and standard averages at the bottom.
+One window.  The Pippeting List goes in once and the NanoDrop export goes in
+once; the concentration workbook and all three filled worksheets come out of
+those two files.  Plates already seen are listed down the left, so a plate
+part-way through is one click away from where it was left.
 
-Requires: openpyxl   (pip install openpyxl)
+This module holds the core - reading the NanoDrop export and the plate
+layout, and writing the concentration workbook.  The window itself is in
+plate_run.py.
+
+Requires: openpyxl, reportlab, pypdf   (pip install -r requirements.txt)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 import os
 import re
@@ -419,312 +424,6 @@ def norm(path):
     return os.path.normpath(path) if path else path
 
 
-class FileRow:
-    """Label + entry + Browse, laid out on two grid rows."""
-
-    def __init__(self, parent, row, label, var, command):
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w",
-                                           pady=(8, 2), columnspan=3)
-        ttk.Entry(parent, textvariable=var).grid(
-            row=row + 1, column=0, columnspan=2, sticky="ew", padx=(0, 6))
-        ttk.Button(parent, text="Browse...", command=command).grid(row=row + 1, column=2)
-
-
-class ConcTab(ttk.Frame):
-    """NanoDrop export + plate layout -> concentration workbook."""
-
-    def __init__(self, master, app):
-        super().__init__(master, padding=12)
-        self.app = app
-        self.columnconfigure(1, weight=1)
-        self.txt_var, self.lay_var, self.out_var = (tk.StringVar() for _ in range(3))
-        self.strict_var = tk.BooleanVar(value=True)
-        self.open_var = tk.BooleanVar(value=False)
-
-        FileRow(self, 0, "NanoDrop concentrations (.txt)", self.txt_var, self.pick_txt)
-        FileRow(self, 2, "Plate layout - Pippeting List (.xlsx)", self.lay_var, self.pick_layout)
-        FileRow(self, 4, "Save workbook as (.xlsx)", self.out_var, self.pick_out)
-
-        opts = ttk.Frame(self)
-        opts.grid(row=6, column=0, columnspan=3, sticky="w", pady=(12, 0))
-        ttk.Checkbutton(opts, text="Stop if the layout does not match the readings",
-                        variable=self.strict_var).grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(opts, text="Open the file when done",
-                        variable=self.open_var).grid(row=1, column=0, sticky="w")
-
-        self.btn = ttk.Button(self, text="Build workbook", command=self.run)
-        self.btn.grid(row=7, column=2, sticky="e", pady=(12, 0))
-
-    def pick_txt(self):
-        p = filedialog.askopenfilename(
-            title="NanoDrop concentrations",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            initialdir=os.path.dirname(self.txt_var.get()) or None)
-        if not p:
-            return
-        p = norm(p)
-        self.txt_var.set(p)
-        if not self.out_var.get():
-            stem = os.path.splitext(os.path.basename(p))[0]
-            self.out_var.set(os.path.join(os.path.dirname(p), stem + ".xlsx"))
-
-    def pick_layout(self):
-        p = filedialog.askopenfilename(
-            title="Plate layout (Pippeting List)",
-            filetypes=[("Excel files", "*.xlsx *.xlsm"), ("All files", "*.*")],
-            initialdir=os.path.dirname(self.lay_var.get() or self.txt_var.get()) or None)
-        if p:
-            self.lay_var.set(norm(p))
-
-    def pick_out(self):
-        p = filedialog.asksaveasfilename(
-            title="Save workbook as", defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")],
-            initialfile=os.path.basename(self.out_var.get()) or None,
-            initialdir=os.path.dirname(self.out_var.get()) or None)
-        if p:
-            self.out_var.set(norm(p))
-
-    def run(self):
-        txt, lay, out = (norm(v.get().strip())
-                         for v in (self.txt_var, self.lay_var, self.out_var))
-        if not (txt and lay and out):
-            messagebox.showwarning(
-                "Missing file",
-                "Pick the NanoDrop .txt, the plate layout .xlsx, and where to save.")
-            return
-        for label, p in (("NanoDrop", txt), ("Plate layout", lay)):
-            if not os.path.isfile(p):
-                messagebox.showerror("Not found", f"{label} file does not exist:\n{p}")
-                return
-        if not self.app.confirm_overwrite(out):
-            return
-        self.app.go(self.btn, out, self.open_var.get(),
-                    lambda: build(txt, lay, out, strict=self.strict_var.get(),
-                                  log=self.app.say))
-
-
-class WorksheetTab(ttk.Frame):
-    """Plate layout + worksheet numbers -> filled worksheet PDFs."""
-
-    def __init__(self, master, app):
-        super().__init__(master, padding=12)
-        self.app = app
-        self.columnconfigure(1, weight=1)
-        self.lay_var, self.out_var = tk.StringVar(), tk.StringVar()
-        self.txt_var = tk.StringVar()
-        self.blank_var = tk.StringVar(value=ws_fill.WS_DIR)
-        self.batch_var = tk.StringVar()
-        self.aliquot_var = tk.StringVar(value="40")
-        self.initials_var = tk.StringVar()
-        self.mode_var = tk.StringVar(value="fill")
-        self.open_var = tk.BooleanVar(value=True)
-        self.page_vars = {k: tk.BooleanVar(value=True)
-                          for k, _, _ in ws_sheets.WORKSHEETS}
-        self.num_vars = {}
-
-        FileRow(self, 0, "Plate layout - Pippeting List (.xlsx)",
-                self.lay_var, self.pick_layout)
-        FileRow(self, 2, "NanoDrop concentrations (.txt)  -  optional, for the "
-                         "average dried IgG", self.txt_var, self.pick_txt)
-        FileRow(self, 4, "Blank worksheets folder", self.blank_var, self.pick_blank)
-        FileRow(self, 6, "Save into folder", self.out_var, self.pick_out)
-
-        row = ttk.Frame(self)
-        row.grid(row=8, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        ttk.Label(row, text="GA batch No.").grid(row=0, column=0, sticky="w")
-        ttk.Entry(row, textvariable=self.batch_var, width=20).grid(
-            row=0, column=1, sticky="w", padx=(8, 20))
-        ttk.Label(row, text="Analyst initials").grid(row=0, column=2, sticky="w")
-        ttk.Entry(row, textvariable=self.initials_var, width=6).grid(
-            row=0, column=3, sticky="w", padx=(8, 20))
-        ttk.Label(row, text="Aliquot dried down").grid(row=0, column=4, sticky="w")
-        ttk.Entry(row, textvariable=self.aliquot_var, width=6).grid(
-            row=0, column=5, sticky="w", padx=(8, 2))
-        ttk.Label(row, text="µL", foreground="#666666").grid(
-            row=0, column=6, sticky="w")
-
-        pages = ttk.Frame(self)
-        pages.grid(row=9, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        ttk.Label(pages, text="Worksheets:").grid(row=0, column=0, sticky="w",
-                                                  padx=(0, 6))
-        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            ttk.Checkbutton(pages, text=name, variable=self.page_vars[key]).grid(
-                row=0, column=i + 1, sticky="w", padx=(0, 14))
-
-        mode = ttk.Frame(self)
-        mode.grid(row=10, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        ttk.Label(mode, text="Output:").grid(row=0, column=0, sticky="w", padx=(0, 6))
-        ttk.Radiobutton(mode, text="Fill the worksheets", value="fill",
-                        variable=self.mode_var).grid(row=0, column=1, padx=(0, 14))
-        ttk.Radiobutton(mode, text="Separate sheet to attach", value="sheet",
-                        variable=self.mode_var).grid(row=0, column=2)
-
-        box = ttk.LabelFrame(self, text="Worksheet numbers taken for this plate",
-                             padding=10)
-        box.grid(row=11, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        box.columnconfigure(1, weight=1)
-        box.columnconfigure(3, weight=1)
-        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            ttk.Label(box, text=name).grid(row=i, column=0, sticky="w", pady=2)
-            v = tk.StringVar()
-            self.num_vars[key] = v
-            ttk.Entry(box, textvariable=v, width=12).grid(
-                row=i, column=1, sticky="w", padx=(10, 24), pady=2)
-        ttk.Label(box, text="Storage (GBL-WS-002)", foreground="#666666").grid(
-            row=0, column=2, sticky="w", pady=2)
-        for i, (key, label) in enumerate(ws_sheets.STORAGE):
-            ttk.Label(box, text=label).grid(row=i + 1, column=2, sticky="w", pady=2)
-            v = tk.StringVar()
-            self.num_vars[key] = v
-            ttk.Entry(box, textvariable=v, width=12).grid(
-                row=i + 1, column=3, sticky="w", padx=(10, 0), pady=2)
-
-        sep = ttk.Frame(self)
-        sep.grid(row=12, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        for i, (key, label) in enumerate((("reception", "Sample reception worksheet no."),
-                                          ("sample_storage", "Sample storage worksheet no."))):
-            ttk.Label(sep, text=label).grid(row=0, column=i * 2, sticky="w", padx=(0, 8))
-            v = tk.StringVar()
-            self.num_vars[key] = v
-            ttk.Entry(sep, textvariable=v, width=12).grid(
-                row=0, column=i * 2 + 1, sticky="w", padx=(0, 28))
-
-        ttk.Checkbutton(self, text="Open when done", variable=self.open_var).grid(
-            row=13, column=0, sticky="w", pady=(12, 0))
-        self.btn = ttk.Button(self, text="Build", command=self.run)
-        self.btn.grid(row=13, column=2, sticky="e", pady=(12, 0))
-
-    # -- pickers -----------------------------------------------------------
-
-    def pick_txt(self):
-        p = filedialog.askopenfilename(
-            title="NanoDrop concentrations (optional)",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            initialdir=os.path.dirname(self.txt_var.get() or self.lay_var.get()) or None)
-        if p:
-            self.txt_var.set(norm(p))
-
-    def pick_blank(self):
-        p = filedialog.askdirectory(title="Folder holding the blank worksheets",
-                                    initialdir=self.blank_var.get() or None)
-        if p:
-            self.blank_var.set(norm(p))
-
-    def pick_layout(self):
-        p = filedialog.askopenfilename(
-            title="Plate layout (Pippeting List)",
-            filetypes=[("Excel files", "*.xlsx *.xlsm"), ("All files", "*.*")],
-            initialdir=os.path.dirname(self.lay_var.get()) or None)
-        if not p:
-            return
-        p = norm(p)
-        self.lay_var.set(p)
-        batch = ws_sheets.batch_from_path(p)
-        if batch and not self.batch_var.get():
-            self.batch_var.set(batch)
-        if not self.out_var.get():
-            self.out_var.set(os.path.dirname(p))
-
-    def pick_out(self):
-        p = filedialog.askdirectory(title="Save the worksheets into",
-                                    initialdir=self.out_var.get() or None)
-        if p:
-            self.out_var.set(norm(p))
-
-    # -- action ------------------------------------------------------------
-
-    def run(self):
-        lay = norm(self.lay_var.get().strip())
-        out = norm(self.out_var.get().strip())
-        if not (lay and out):
-            messagebox.showwarning("Missing",
-                                   "Pick the plate layout and where to save.")
-            return
-        if not os.path.isfile(lay):
-            messagebox.showerror("Not found", f"Plate layout does not exist:\n{lay}")
-            return
-        if not os.path.isdir(out):
-            messagebox.showerror("Not found", f"Folder does not exist:\n{out}")
-            return
-        chosen = [k for k, v in self.page_vars.items() if v.get()]
-        if not chosen:
-            messagebox.showwarning("Nothing selected", "Tick at least one worksheet.")
-            return
-        try:
-            aliquot = float(self.aliquot_var.get().strip().replace(",", "."))
-            if aliquot <= 0:
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Aliquot volume",
-                                 "The aliquot volume must be a positive number, "
-                                 "e.g. 40.")
-            return
-        txt = norm(self.txt_var.get().strip())
-        if txt and not os.path.isfile(txt):
-            messagebox.showerror("Not found", f"NanoDrop file does not exist:\n{txt}")
-            return
-
-        numbers = {k: v.get().strip() for k, v in self.num_vars.items()}
-        blank = [n for k, _, n in ws_sheets.WORKSHEETS
-                 if k in chosen and not numbers.get(k)] + \
-                [s for k, s in ws_sheets.STORAGE if not numbers.get(k)]
-        if blank and not messagebox.askyesno(
-                "Numbers missing",
-                "No number entered for:\n\n  - " + "\n  - ".join(blank)
-                + "\n\nThose fields will be left blank.  Build anyway?"):
-            return
-
-        filling = self.mode_var.get() == "fill"
-        batch = self.batch_var.get().strip()
-        initials = self.initials_var.get().strip().upper()
-        first = []
-
-        def work():
-            layout, sheet_used, conflicts = read_layout(lay, keep_filler=True)
-            for w, v1, v2 in conflicts[:10]:
-                self.app.say(f"  !! layout conflict {w}: {v1!r} vs {v2!r}")
-            avg = None
-            if txt:
-                avg = mean_concentrations(txt, layout)
-                self.app.say(f"Avg dried IgG     : DBS {avg[0] * aliquot:.1f} ug / "
-                             f"standards {avg[1] * aliquot:.1f} ug")
-            elif "deglyco" in chosen:
-                self.app.say("  !! no NanoDrop file given - the average dried IgG "
-                             "will be left blank")
-
-            if filling:
-                sources = ws_fill.discover(norm(self.blank_var.get().strip()) or None)
-                for k in chosen:
-                    if k not in sources:
-                        self.app.say(f"  !! no blank worksheet found for "
-                                     f"{dict((a, n) for a, _, n in ws_sheets.WORKSHEETS)[k]}")
-                self.app.say("")
-                written = ws_fill.fill_all(
-                    sources, out, layout, batch=batch, numbers=numbers,
-                    initials=initials, avg_conc=avg, aliquot_ul=aliquot,
-                    pages=chosen, colours=layout_colours.read_colours(lay, sheet_used),
-                    log=self.app.say)
-                first.extend(written)
-                self.app.say("")
-                self.app.say(f"Saved {len(written)} worksheet(s) into {out}")
-            else:
-                pdf = os.path.join(out, f"{batch or 'plate'} list of samples.pdf")
-                ws_sheets.build_worksheet_pack(
-                    layout, pdf, batch=batch, source_name=os.path.basename(lay),
-                    sheet_name=sheet_used, numbers=numbers, avg_conc=avg,
-                    aliquot_ul=aliquot, pages=chosen, initials=initials,
-                    log=self.app.say)
-                first.append(pdf)
-
-        self.app.go(self.btn, out, False, work)
-        if self.open_var.get() and first:
-            try:
-                os.startfile(norm(first[0]))
-            except Exception as e:
-                self.app.say(f"  (could not open the file: {e})")
-
-
 class App(ttk.Frame):
     def __init__(self, master):
         super().__init__(master, padding=10)
@@ -732,25 +431,20 @@ class App(ttk.Frame):
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=3)      # the tabs - the Plate run one scrolls
+        self.rowconfigure(0, weight=5)      # the form gets the room
         self.rowconfigure(2, weight=1)      # the report pane
 
-        nb = ttk.Notebook(self)
-        nb.grid(row=0, column=0, sticky="nsew")
         import plate_run
-        self.run_tab = plate_run.PlateRunTab(nb, self)
-        self.conc_tab = ConcTab(nb, self)
-        self.ws_tab = WorksheetTab(nb, self)
-        nb.add(self.run_tab, text="  Plate run  ")
-        nb.add(self.conc_tab, text="  IgG concentrations  ")
-        nb.add(self.ws_tab, text="  Worksheets  ")
+        self.view = plate_run.MainView(self, self)
+        self.view.grid(row=0, column=0, sticky="nsew")
+        self.panel = self.view.panel
 
         ttk.Label(self, text="Report").grid(row=1, column=0, sticky="w", pady=(12, 2))
         wrap = ttk.Frame(self)
         wrap.grid(row=2, column=0, sticky="nsew")
         wrap.columnconfigure(0, weight=1)
         wrap.rowconfigure(0, weight=1)
-        self.log = tk.Text(wrap, height=12, wrap="none", state="disabled",
+        self.log = tk.Text(wrap, height=7, wrap="none", state="disabled",
                            font=("Consolas", 9))
         self.log.grid(row=0, column=0, sticky="nsew")
         sb = ttk.Scrollbar(wrap, orient="vertical", command=self.log.yview)
@@ -811,8 +505,8 @@ class App(ttk.Frame):
 
 def main():
     root = tk.Tk()
-    root.title(f"GlycanAge - IgG concentration workbook  v{__version__}")
-    root.minsize(900, 820)
+    root.title(f"GlycanAge - plate run  v{__version__}")
+    root.minsize(1150, 840)          # the plate list sits beside the form
     try:
         ttk.Style().theme_use("vista")
     except tk.TclError:

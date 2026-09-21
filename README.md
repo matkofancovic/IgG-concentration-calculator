@@ -2,21 +2,35 @@
 
 Paperwork for a GlycanAge plate - IgG isolation, the concentration
 measurement that follows it, and the deglycosylation and clean-up after
-that. One plate layout file behind all of it.
+that.
 
-| Tab | Produces |
+**One window, two files.** The Pippeting List goes in once and the NanoDrop
+export goes in once; everything else is produced from those:
+
+| Out | What it is |
 |---|---|
-| **Plate run** | the whole run for one plate, in order - see below |
-| **IgG concentrations** | the concentration workbook: **Well / Sample ID / conc. / units**, colour-coded, with the DBS and standard averages |
-| **Worksheets** | the three filled worksheet PDFs, or a printable companion sheet to attach |
+| `<plate>.xlsx` | the concentration workbook - **Well / Sample ID / conc. / units**, colour-coded, with the DBS and standard averages |
+| IgG isolation worksheet | filled GBL-WS-031/07, with the real coloured plate layout |
+| Deglycosylation worksheet | filled GBL-WS-029/04, average dried IgG worked out |
+| Clean up worksheet | filled GBL-WS-030/04 |
 
 Replaces doing all of it by hand.
 
-## Plate run - the whole thing in one place
+```
+┌──────────────┬──────────────────────────────────────┐
+│ Plates       │  1. The plate - both files, once     │
+│              │  2. Worksheet and storage numbers    │
+│ 999-GA-…  ✓  │  3. Filter plates and enzyme         │
+│ 998-GA-…  ◐  │  4. Solution dates (optional)        │
+│ 997-GA-…  ✓  │  5. Build                            │
+│              │  6. Where the blank worksheets live  │
+│ [New plate…] │                                      │
+├──────────────┴──────────────────────────────────────┤
+│ Report                                              │
+└─────────────────────────────────────────────────────┘
+```
 
-The other two tabs each do one job, but leave you to remember the order and
-to type the same numbers into both. This tab is the job as it is actually
-done:
+## The run
 
 1. open the **Pippeting List** for the plate
 2. enter the worksheet numbers taken for it (isolation, deglycosylation,
@@ -31,9 +45,27 @@ done:
    worksheet quoting the number of the one before it
 
 **Nothing is ever locked.** Every output can be rebuilt and saved again at any
-point, in any order. The numbered steps are the normal path, not a cage - the
-only real ordering constraint is that the isolation happens before the
+point, in any order. The numbered sections are the normal path, not a cage -
+the only real ordering constraint is that the isolation happens before the
 NanoDrop, and that is the bench's constraint, not the program's.
+
+### The plate list
+
+Every plate the program has seen, newest first, with how far it got:
+
+| | |
+|---|---|
+| ✓ | all three worksheets built |
+| ◐ | part way through |
+| · | nothing built yet |
+
+Click one and it comes back exactly as it was left - the numbers, the LOTs,
+the save folder, the NanoDrop file. That is what makes day 2 a click rather
+than a retype. **New plate...** starts one from a Pippeting List; **Remove**
+forgets a plate without touching any file it produced.
+
+If a Pippeting List has been moved or renamed since, opening the plate says
+so and Browse relinks it.
 
 ### It remembers
 
@@ -197,7 +229,7 @@ the share copy even while colleagues have the app open.
 
 ## Filling the worksheets
 
-The **Worksheets** tab writes the derivable values straight onto a copy of
+Building writes the derivable values straight onto a copy of
 each worksheet PDF - the 8x12 sample grid, GA batch, worksheet and storage
 numbers, the IgG eluate plate label, the average dried IgG - in dark blue, so
 what the program added is obvious against the black original. The blanks on
@@ -254,7 +286,8 @@ program's:
 
 ### Separate sheet instead
 
-The *Separate sheet to attach* option produces the earlier one-page-per-
+The *Separate sheet to attach, instead of filling the worksheets* option
+under **5. Build** produces the earlier one-page-per-
 worksheet PDF instead, for when attaching is preferred to filling.
 
 ### GA batch number
