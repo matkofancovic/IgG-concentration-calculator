@@ -866,6 +866,22 @@ class PlateRunPanel(tk.Frame):
         self.note = ttk.Label(c.body, text="", style="CardMuted.TLabel")
         self.note.grid(row=5, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
+        # Where the blank worksheets are.  Shown rather than hidden, because
+        # pointing it at the wrong folder is easy and the only symptom is
+        # 'no blank worksheet found' three clicks later.
+        ttk.Separator(c.body, orient="horizontal").grid(
+            row=6, column=0, columnspan=3, sticky="ew", pady=(14, 8))
+        wsrow = ttk.Frame(c.body, style="Card.TFrame")
+        wsrow.grid(row=7, column=0, columnspan=3, sticky="ew")
+        wsrow.columnconfigure(1, weight=1)
+        ttk.Label(wsrow, text="Blank worksheets", style="CardMuted.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(0, 10))
+        self.blanks_lbl = ttk.Label(wsrow, style="Card.TLabel",
+                                    text=self.blank_var.get() or "not chosen yet")
+        self.blanks_lbl.grid(row=0, column=1, sticky="w")
+        ttk.Button(wsrow, text="Worksheets folder",
+                   command=self.change_blanks).grid(row=0, column=2, sticky="e")
+
         return wrap
 
     # --------------------------------------------------------------- helpers
@@ -1072,9 +1088,52 @@ class PlateRunPanel(tk.Frame):
         if not picked:
             return ""
         picked = _norm(picked)
+        if not self.check_blanks(picked):
+            return ""
         self.blank_var.set(picked)
         self.store.set_blanks_folder(picked)
+        if hasattr(self, "blanks_lbl"):
+            self.blanks_lbl.config(text=picked)
         return picked
+
+    def check_blanks(self, folder):
+        """-> True if `folder` actually holds blank worksheets.
+
+        Checked when it is picked rather than only at build time, so a wrong
+        folder is caught while the analyst is still looking at the chooser
+        instead of three clicks later as 'no blank worksheet found'.
+        """
+        try:
+            found = ws_fill.discover(folder)
+        except ws_fill.FillError:
+            found = {}
+        if found:
+            return True
+        messagebox.showerror(
+            "No worksheets in that folder",
+            folder + "\n\nhas no blank worksheet PDFs in it.\n\n"
+            "The program is looking for files whose names start GBL-WS-029, "
+            "GBL-WS-030, GBL-WS-031 and GBL-WS-002.\n\n"
+            "Pick the folder those PDFs are actually in.")
+        return False
+
+    def change_blanks(self):
+        """Re-point at the blank worksheets folder."""
+        picked = filedialog.askdirectory(
+            title="Folder holding the blank worksheets",
+            initialdir=self.blank_var.get() or None)
+        if not picked:
+            return
+        picked = _norm(picked)
+        if not self.check_blanks(picked):
+            return
+        self.blank_var.set(picked)
+        self.store.set_blanks_folder(picked)
+        self.blanks_lbl.config(text=picked)
+        found = ws_fill.discover(picked)
+        self.app.say(f"Blank worksheets folder set to {picked}")
+        for k, v in sorted(found.items()):
+            self.app.say(f"  found {k}: {os.path.basename(v)}")
 
     # ----------------------------------------------------------------- state
 
@@ -1182,11 +1241,21 @@ class PlateRunPanel(tk.Frame):
                 avg_conc=avg, aliquot_ul=spec["aliquot"], pages=keys,
                 initials=spec["initials"], log=self.app.say)
             return [pdf]
-        sources = ws_fill.discover(self.blanks())
+        folder = self.blanks()
+        sources = ws_fill.discover(folder)
         names = dict((k, n) for k, _, n in ws_sheets.WORKSHEETS)
-        for k in keys:
-            if k not in sources:
-                self.app.say(f"  !! no blank worksheet found for {names[k]}")
+        missing = [k for k in keys if k not in sources]
+        if missing:
+            self.app.say("")
+            self.app.say(f"  !! Looked in:  {folder}")
+            for k in missing:
+                self.app.say(f"  !! and found no blank worksheet for "
+                             f"{names[k]} - a PDF whose name starts "
+                             f"{ws_fill.WS_CODES[k]}")
+            self.app.say("  !! That folder is not the one with the blank "
+                         "worksheets in it.")
+            self.app.say("  !! Press 'Worksheets folder' at the bottom of "
+                         "Build and point at the right one.")
         return ws_fill.fill_all(
             sources, spec["out"], self.layout, batch=spec["batch"],
             numbers=spec["numbers"], date=spec["date"], initials=spec["initials"],
