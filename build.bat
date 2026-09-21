@@ -25,6 +25,9 @@ python -m PyInstaller ^
   --exclude-module matplotlib ^
   --exclude-module PyQt5 ^
   --exclude-module scipy ^
+  --hidden-import plate_run ^
+  --hidden-import store ^
+  --hidden-import layout_colours ^
   --noconfirm --clean ^
   igg_conc_gui.py
 

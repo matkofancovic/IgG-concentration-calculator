@@ -9,7 +9,7 @@ colour-coded, with the DBS and standard averages at the bottom.
 Requires: openpyxl   (pip install openpyxl)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import os
 import re
@@ -28,6 +28,7 @@ except ImportError:
 
 import ws_sheets
 import ws_fill
+import layout_colours
 
 
 # ===========================================================================
@@ -702,7 +703,8 @@ class WorksheetTab(ttk.Frame):
                 written = ws_fill.fill_all(
                     sources, out, layout, batch=batch, numbers=numbers,
                     initials=initials, avg_conc=avg, aliquot_ul=aliquot,
-                    pages=chosen, log=self.app.say)
+                    pages=chosen, colours=layout_colours.read_colours(lay, sheet_used),
+                    log=self.app.say)
                 first.extend(written)
                 self.app.say("")
                 self.app.say(f"Saved {len(written)} worksheet(s) into {out}")
@@ -730,12 +732,16 @@ class App(ttk.Frame):
         master.columnconfigure(0, weight=1)
         master.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(0, weight=3)      # the tabs - the Plate run one scrolls
+        self.rowconfigure(2, weight=1)      # the report pane
 
         nb = ttk.Notebook(self)
-        nb.grid(row=0, column=0, sticky="ew")
+        nb.grid(row=0, column=0, sticky="nsew")
+        import plate_run
+        self.run_tab = plate_run.PlateRunTab(nb, self)
         self.conc_tab = ConcTab(nb, self)
         self.ws_tab = WorksheetTab(nb, self)
+        nb.add(self.run_tab, text="  Plate run  ")
         nb.add(self.conc_tab, text="  IgG concentrations  ")
         nb.add(self.ws_tab, text="  Worksheets  ")
 
@@ -847,7 +853,7 @@ def cli(argv):
                 print(USAGE)
                 return 2
             layout_path, out_dir = args
-            layout, _, _ = read_layout(layout_path, keep_filler=True)
+            layout, sheet_used, _ = read_layout(layout_path, keep_filler=True)
             nd = _opt(argv, "--nanodrop")
             pages = _opt(argv, "--pages")
             ws_fill.fill_all(
@@ -856,6 +862,7 @@ def cli(argv):
                 numbers={}, initials=(_opt(argv, "--initials") or "").upper(),
                 avg_conc=mean_concentrations(nd, layout) if nd else None,
                 aliquot_ul=float(_opt(argv, "--aliquot", 40)),
+                colours=layout_colours.read_colours(layout_path, sheet_used),
                 pages=[x.strip() for x in pages.split(",")] if pages else None)
             return 0
 
