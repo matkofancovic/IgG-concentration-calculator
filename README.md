@@ -321,6 +321,30 @@ on the plate, and nothing downstream would notice.
 If the check fails the workbook is **not** written and the report says why.
 Untick *Stop if the layout does not match the readings* to override.
 
+## What it touches
+
+**Output goes to the Desktop**, in `Desktop\GlycanAge plate runs\<plate>\`.
+Nothing is written onto the Glikobiologija share.
+
+On that share the program uses **one folder only**:
+
+    \10.70.119.100\Glikobiologija\Python programs\IgG Concentration Builder
+
+which holds the exe and the two small json files the lab shares. The rest of
+that share is private participant data and the program has no path into it.
+
+The blank worksheet PDFs do live elsewhere on the share, so the program asks
+the analyst to point at that folder once and remembers the choice - it never
+goes looking by itself. That is a deliberate constraint, not an oversight:
+see `WS_DIR` in `ws_fill.py`, which is empty on purpose.
+
+## Printing
+
+Every filled worksheet carries a `/Duplex /DuplexFlipLongEdge` request in its
+viewer preferences, so **Print** comes out double-sided. It is a request, not
+a command - Windows' print verb takes no settings - so a reader that ignores
+viewer preferences will still print single-sided.
+
 ## For the analysts
 
 `HOW TO INSTALL AND USE.txt` sits next to the exe on the share and is written

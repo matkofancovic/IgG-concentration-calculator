@@ -44,12 +44,16 @@ RUNS_FILE = "runs.json"
 # The consumables the program offers a remembered value for.  'Times this
 # Protein G plate has been used' is deliberately NOT here: it is counted from
 # the plates the lab has actually run, not typed in - see proteing_uses().
-#   key            label shown in the form                     keeps history
+# The last column is the day it belongs to, so the form can group them - a
+# plate that is not opened until day 3 should not sit among day 1's fields.
+#   key                    label shown in the form                     day
 CONSUMABLE_FIELDS = [
-    ("wwptfe_lot",           "wwPTFE plate LOT no.",              True),
-    ("proteing_no",          "Protein G monolithic plate (No.)",  True),
-    ("enzyme_lot",           "PNGase F enzyme LOT",               True),
-    ("enzyme_reconstituted", "Enzyme date of reconstitution",     False),
+    ("wwptfe_lot",           "wwPTFE plate LOT no.",              "isolation"),
+    ("proteing_no",          "Protein G monolithic plate (No.)",  "isolation"),
+    ("enzyme_lot",           "PNGase F enzyme LOT",               "deglyco"),
+    ("enzyme_reconstituted", "Enzyme date of reconstitution",     "deglyco"),
+    # a different physical plate from the isolation one, opened on day 3
+    ("wwptfe_lot_cleanup",   "wwPTFE 0,2 µm plate LOT no.",  "cleanup"),
 ]
 
 # Solutions, per worksheet, exactly as their rows are printed.
@@ -166,6 +170,16 @@ class Store:
             if who:
                 rec["by"] = who
             data[key] = rec
+        self._write(CONSUMABLES_FILE, merge)
+
+    def blanks_folder(self):
+        """-> where the blank worksheet PDFs were last found, or ''."""
+        v = self._read(CONSUMABLES_FILE).get("_blanks_folder")
+        return v if isinstance(v, str) else ""
+
+    def set_blanks_folder(self, folder):
+        def merge(data):
+            data["_blanks_folder"] = folder
         self._write(CONSUMABLES_FILE, merge)
 
     # -- Protein G plate use count ----------------------------------------

@@ -125,6 +125,25 @@ def _norm(path):
     return os.path.normpath(path) if path else path
 
 
+# Everything the program writes goes here.  Deliberately on the Desktop and
+# never onto the Glikobiologija share: the rest of that share is private
+# participant data and this program has no business writing into it.
+DESKTOP_ROOT = os.path.join(
+    os.path.join(os.environ.get("USERPROFILE", os.path.expanduser("~")),
+                 "Desktop"),
+    "GlycanAge plate runs")
+
+
+def output_folder(batch):
+    """-> the Desktop folder for this plate, made if it is not there yet."""
+    folder = os.path.join(DESKTOP_ROOT, batch.strip() or "unnamed plate")
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:
+        return DESKTOP_ROOT
+    return folder
+
+
 def next_number(value, step=1):
     """'GA3084' -> 'GA3085'.  Keeps the prefix and the digit width."""
     m = re.search(r"^(.*?)(\d+)\s*$", value or "")
@@ -452,12 +471,17 @@ class PlateRunPanel(tk.Frame):
         self.out_var = tk.StringVar()
         self.batch_var = tk.StringVar()
         self.initials_var = tk.StringVar()
-        self.date_var = tk.StringVar(
-            value=datetime.date.today().strftime("%d.%m.%Y"))
+        # 'Day 1' and 'IgG isolation' were the same date in two boxes.  The
+        # isolation date IS day 1, so it drives the other two directly.
         self.date_vars = {k: tk.StringVar() for k, _, _ in ws_sheets.WORKSHEETS}
+        self.date_var = self.date_vars["isolation"]
+        self.date_var.set(datetime.date.today().strftime("%d.%m.%Y"))
         self.date_var.trace_add("write", lambda *_: self.spread_dates())
         self.aliquot_var = tk.StringVar(value="40")
-        self.blank_var = tk.StringVar(value=ws_fill.WS_DIR)
+        # Where the blank worksheet PDFs are.  Empty until the analyst points
+        # at the folder themselves - the program never goes looking on the
+        # Glikobiologija share on its own.
+        self.blank_var = tk.StringVar(value=self.store.blanks_folder())
         self.enzyme_var = tk.StringVar(value="30")
         self.strict_var = tk.BooleanVar(value=True)
         self.attach_var = tk.BooleanVar(value=False)
@@ -499,11 +523,11 @@ class PlateRunPanel(tk.Frame):
         d.body.columnconfigure(6, weight=1)          # slack goes on the right
         field(d.body, 0, "GA batch No.", self.batch_var, 20)
         field(d.body, 0, "Analyst initials", self.initials_var, 8, col=3)
-        field(d.body, 1, "Day 1 (isolation)", self.date_var, 14)
         field(d.body, 1, "Aliquot dried down", self.aliquot_var, 8, col=3,
               unit="µL")
         for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            field(d.body, 2 + i, name, self.date_vars[key], 14)
+            field(d.body, 1 + i, f"Day {i + 1}  -  {name}",
+                  self.date_vars[key], 14)
         self.spread_dates()
 
         self.plate_info = ttk.Label(wrap, text="No plate loaded yet.",
@@ -562,12 +586,23 @@ class PlateRunPanel(tk.Frame):
         wrap.rowconfigure(1, weight=1)
 
         c = Card(wrap, "Filter plates and enzyme",
-                 "The last one used is offered.  Check it against the label in "
-                 "front of you before printing - what was used last is a "
-                 "convenience, not proof.")
+                 "Grouped by the day they are opened.  The last one used is "
+                 "offered - check it against the label in front of you before "
+                 "printing; what was used last is a convenience, not proof.")
         c.grid(row=0, column=0, sticky="ew")
-        n = len(store_mod.CONSUMABLE_FIELDS)
-        for i, (key, label, _h) in enumerate(store_mod.CONSUMABLE_FIELDS):
+        day_of = dict((k, n) for k, _, n in ws_sheets.WORKSHEETS)
+        n, row = len(store_mod.CONSUMABLE_FIELDS), 0
+        seen_day = None
+        for key, label, day in store_mod.CONSUMABLE_FIELDS:
+            if day != seen_day:
+                seen_day = day
+                ttk.Label(c.body, text=day_of.get(day, day),
+                          style="CardMuted.TLabel").grid(
+                    row=row, column=0, columnspan=3, sticky="w",
+                    pady=(10 if row else 0, 2))
+                row += 1
+            i = row
+            row += 1
             ttk.Label(c.body, text=label, style="Card.TLabel").grid(
                 row=i, column=0, sticky="w", pady=4, padx=(0, 12))
             v = tk.StringVar()
@@ -586,7 +621,7 @@ class PlateRunPanel(tk.Frame):
                 self.uses_lbl.grid(row=i, column=2, sticky="w", padx=(14, 0))
 
         vial = ttk.Frame(c.body, style="Card.TFrame")
-        vial.grid(row=n, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        vial.grid(row=row, column=0, columnspan=3, sticky="w", pady=(12, 0))
         ttk.Label(vial, text="PNGase F vial", style="Card.TLabel").grid(
             row=0, column=0, padx=(0, 12))
         ttk.Radiobutton(vial, text="30 µg", value="30",
@@ -682,21 +717,12 @@ class PlateRunPanel(tk.Frame):
         self.note = ttk.Label(c.body, text="", style="CardMuted.TLabel")
         self.note.grid(row=5, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
-        b = Card(wrap, "Blank worksheets",
-                 "Newest revision of each document code wins, so a new release "
-                 "is picked up on its own.")
-        b.grid(row=1, column=0, sticky="ew", pady=(14, 0))
-        ttk.Entry(b.body, textvariable=self.blank_var).grid(row=0, column=0,
-                                                            sticky="ew", padx=(0, 8))
-        b.body.columnconfigure(0, weight=1)
-        ttk.Button(b.body, text="Browse...", command=self.pick_blanks).grid(
-            row=0, column=1)
         return wrap
 
     # --------------------------------------------------------------- helpers
 
     def spread_dates(self):
-        """Day 1 typed -> the other two on the next working days."""
+        """The isolation date typed -> the other two on the next working days."""
         try:
             start = datetime.datetime.strptime(self.date_var.get().strip(),
                                                "%d.%m.%Y").date()
@@ -805,7 +831,7 @@ class PlateRunPanel(tk.Frame):
         if found:
             self.batch_var.set(found)
         if not self.out_var.get():
-            self.out_var.set(os.path.dirname(path))
+            self.out_var.set(output_folder(self.batch_var.get().strip()))
 
         self.title_lbl.config(text=self.batch_var.get().strip()
                               or os.path.basename(path))
@@ -879,11 +905,27 @@ class PlateRunPanel(tk.Frame):
         if p:
             self.out_var.set(_norm(p))
 
-    def pick_blanks(self):
-        p = filedialog.askdirectory(title="Folder holding the blank worksheets",
-                                    initialdir=self.blank_var.get() or None)
-        if p:
-            self.blank_var.set(_norm(p))
+    def blanks(self):
+        """-> the blank-worksheets folder, asking for it once if need be.
+
+        The program does not go hunting on the share; the analyst points at
+        the folder and it is remembered from then on.
+        """
+        folder = _norm(self.blank_var.get().strip())
+        if folder and os.path.isdir(folder):
+            return folder
+        messagebox.showinfo(
+            "Where are the blank worksheets?",
+            "Point at the folder holding the blank worksheet PDFs - the ones "
+            "named GBL-WS-029, 030, 031 and 002.\n\n"
+            "You only have to do this once; it is remembered afterwards.")
+        picked = filedialog.askdirectory(title="Folder holding the blank worksheets")
+        if not picked:
+            return ""
+        picked = _norm(picked)
+        self.blank_var.set(picked)
+        self.store.set_blanks_folder(picked)
+        return picked
 
     # ----------------------------------------------------------------- state
 
@@ -991,7 +1033,7 @@ class PlateRunPanel(tk.Frame):
                 avg_conc=avg, aliquot_ul=spec["aliquot"], pages=keys,
                 initials=spec["initials"], log=self.app.say)
             return [pdf]
-        sources = ws_fill.discover(_norm(self.blank_var.get().strip()) or None)
+        sources = ws_fill.discover(self.blanks())
         names = dict((k, n) for k, _, n in ws_sheets.WORKSHEETS)
         for k in keys:
             if k not in sources:
@@ -1120,7 +1162,7 @@ class PlateRunPanel(tk.Frame):
             return
 
         def work():
-            sources = ws_fill.discover(_norm(self.blank_var.get().strip()) or None)
+            sources = ws_fill.discover(self.blanks())
             if "storage" not in sources:
                 self.app.say("  !! no blank GBL-WS-002 found in the worksheets "
                              "folder")

@@ -63,8 +63,12 @@ def _grid_fonts():
 
 GRID_FONT, GRID_FONT_BOLD = _grid_fonts()
 
-# where the blank worksheets live, and the document code of each
-WS_DIR = r"\\10.70.119.100\Glikobiologija\SOPs and WS\WSs"
+# The document code of each worksheet.  There is deliberately NO default
+# folder: the blank worksheets sit among private participant data on the
+# Glikobiologija share, so the analyst points at that folder once through the
+# file dialog and the choice is remembered.  The program never goes looking
+# on that share by itself.
+WS_DIR = ""
 WS_CODES = {"isolation": "GBL-WS-031",
             "deglyco":   "GBL-WS-029",
             "cleanup":   "GBL-WS-030",
@@ -181,6 +185,11 @@ def discover(folder=None):
     highest revision wins and a new one is picked up without a code change.
     """
     folder = folder or WS_DIR
+    if not folder:
+        raise FillError(
+            "The folder holding the blank worksheets has not been chosen yet."
+            "\n\nPick it when asked - the folder with the GBL-WS-029, 030, 031 "
+            "and 002 PDFs in it.  It is remembered after that.")
     try:
         names = os.listdir(folder)
     except OSError as e:
@@ -758,6 +767,16 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
             page.merge_page(PdfReader(buf).pages[0])
         writer.add_page(page)
 
+    # Ask for double-sided, flipped on the long edge.  This is a request in
+    # the PDF itself, which is the only lever there is from here - Windows'
+    # print verb takes no settings.  Acrobat and Edge honour it; a reader
+    # that ignores it just prints single-sided as before.
+    try:
+        writer.create_viewer_preferences()
+        writer.viewer_preferences.duplex = "/DuplexFlipLongEdge"
+    except Exception:
+        pass
+
     try:
         with open(out_path, "wb") as fh:
             writer.write(fh)
@@ -789,7 +808,9 @@ CONSUMABLES = {
         (1, "Date of reconstitution:", "enzyme_reconstituted", None, True),
     ],
     "cleanup": [
-        (0, "LOT no.:", "wwptfe_lot", None, False),
+        # A different physical plate from the isolation one - it is opened on
+        # day 3 - so it carries its own LOT rather than repeating day 1's.
+        (0, "LOT no.:", "wwptfe_lot_cleanup", None, False),
     ],
 }
 

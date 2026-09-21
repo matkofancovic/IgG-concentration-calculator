@@ -121,6 +121,23 @@ WHAT IT IS
    7.  Put the NanoDrop .txt in.
    8.  Press "Workbook + deglyco + clean up".
 
+  WHERE THE FILES GO
+     Everything is saved to your own Desktop, in
+
+         Desktop\GlycanAge plate runs\<plate>
+     Nothing is ever written onto the Glikobiologija share.
+
+  THE BLANK WORKSHEETS
+     The first time you build something the program asks you to point at the
+     folder holding the blank worksheet PDFs (GBL-WS-029, 030, 031, 002).
+     It remembers that afterwards.  It does not go looking on the share by
+     itself.
+
+  PRINTING
+     Printed worksheets ask the printer for double-sided (flipped on the long
+     edge).  Most readers honour it; if yours prints single-sided, tick
+     double-sided in the print dialog once and it will stick.
+
   ANY TIME
    *  "Concentration workbook only" builds just the spreadsheet, without
       touching the worksheets.
