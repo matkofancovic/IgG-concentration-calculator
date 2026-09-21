@@ -14,7 +14,7 @@ plate_run.py.
 Requires: openpyxl, reportlab, pypdf   (pip install -r requirements.txt)
 Run with: python igg_conc_gui.py
 """
-__version__ = "1.9.1"
+__version__ = "1.10.0"
 
 import os
 import re

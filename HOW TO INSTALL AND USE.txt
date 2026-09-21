@@ -99,6 +99,12 @@ WHAT IT IS
   USING IT  -  a normal plate
 ---------------------------------------------------------------------------
 
+  THE DATES
+     It is a three day job, so put the DAY 1 (ISOLATION) date in and the
+     other two fill themselves in on the next working days - start on a
+     Friday and you get Monday and Tuesday, not the weekend.  Change any of
+     them by hand if a run slips.
+
   DAY 1
    1.  "New plate..." (left) and pick the plate's Pippeting List.
    2.  Type the first worksheet number, press "Fill down" - the rest follow
@@ -118,6 +124,10 @@ WHAT IT IS
   ANY TIME
    *  "Concentration workbook only" builds just the spreadsheet, without
       touching the worksheets.
+   *  "Storage worksheets (x3)" fills one GBL-WS-002 per storage number -
+      IgG eluate, dry IgG, APTS glycans - each with the coloured sample
+      grid.  The freezer letter and drawer number are left blank for you to
+      write in at the freezer.
    *  Nothing is ever locked.  Every button can be pressed again, in any
       order, as many times as you like.  Building something twice does not
       double-count the solutions or the Protein G plate.

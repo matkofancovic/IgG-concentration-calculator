@@ -67,6 +67,19 @@ forgets a plate without touching any file it produced.
 If a Pippeting List has been moved or renamed since, opening the plate says
 so and Browse relinks it.
 
+### Dates - one per day of the process
+
+A plate is three days of bench work, and each worksheet carries the date it
+was actually done. Type **Day 1 (isolation)** and the other two follow on the
+next *working* days - an isolation started on a Friday puts the
+deglycosylation on the Monday and the clean-up on the Tuesday, not on the
+weekend. All three boxes stay editable for when a run slips.
+
+The storage worksheets are dated when the material actually goes into
+storage, which is not the same day for all three: the IgG eluate and the
+dried IgG are both put away at the end of the isolation, but the
+APTS-labelled glycans do not exist until the clean-up on day 3.
+
 ### Worksheet and storage numbers
 
 They are taken in a run, so only the first is worth typing. Put `GA3084` in
@@ -120,6 +133,27 @@ per PNGase F vial size. Pick 30 µg or 50 µg and only that line is filled.
 Anything left empty stays empty on the printed worksheet for you to write in -
 including every solution date at once, via *Skip these and fill the tables in
 by hand after printing*.
+
+## The storage worksheets (GBL-WS-002)
+
+One filled sheet per storage number the plate takes - IgG eluate, dry IgG,
+APTS labelled N-glycans - from the **Storage worksheets (x3)** button.
+
+| Filled | From |
+|---|---|
+| No. | the GBL-WS-002 number for that output |
+| Date | the day that material goes into storage |
+| Lab worksheet no. | the IgG isolation worksheet number |
+| Sample reception worksheet no. | as entered for the plate |
+| Sample type / Packed in | ticked - they follow from what is being stored |
+| Sample list | the coloured 8x12 plate grid |
+
+Left blank on purpose: **the fridge/freezer letter and the drawer number**.
+Those are chosen standing at the freezer and are not knowable here.
+
+Note that GBL-WS-002 puts its answer boxes *before* the wording for
+`Sample reception worksheet no.` and `Lab worksheet no.`, where every other
+worksheet puts them after - so those two are placed into the box on the left.
 
 ## The solution library
 

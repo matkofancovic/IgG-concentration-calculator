@@ -397,6 +397,8 @@ class PlateRunPanel(ttk.Frame):
         self.initials_var = tk.StringVar()
         self.date_var = tk.StringVar(
             value=datetime.date.today().strftime("%d.%m.%Y"))
+        self.date_vars = {k: tk.StringVar() for k, _, _ in ws_sheets.WORKSHEETS}
+        self.date_var.trace_add("write", lambda *_: self.spread_dates())
         self.aliquot_var = tk.StringVar(value="40")
         self.blank_var = tk.StringVar(value=ws_fill.WS_DIR)
         self.enzyme_var = tk.StringVar(value="30")
@@ -445,7 +447,7 @@ class PlateRunPanel(ttk.Frame):
         row.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
         for i, (lbl, var, w) in enumerate((("GA batch No.", self.batch_var, 18),
                                            ("Analyst initials", self.initials_var, 6),
-                                           ("Date", self.date_var, 12),
+                                           ("Day 1 (isolation)", self.date_var, 12),
                                            ("Aliquot dried down (µL)",
                                             self.aliquot_var, 6))):
             ttk.Label(row, text=lbl).grid(row=0, column=i * 2, sticky="w",
@@ -453,10 +455,33 @@ class PlateRunPanel(ttk.Frame):
             ttk.Entry(row, textvariable=var, width=w).grid(row=0, column=i * 2 + 1,
                                                            sticky="w")
 
+        days = ttk.Frame(s)
+        days.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(days, text="Each worksheet is dated the day it is done:",
+                  style="Muted.TLabel").grid(row=0, column=0, sticky="w",
+                                             padx=(0, 10))
+        for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
+            ttk.Label(days, text=name).grid(row=0, column=i * 2 + 1, sticky="w",
+                                            padx=(8, 4))
+            ttk.Entry(days, textvariable=self.date_vars[key], width=12).grid(
+                row=0, column=i * 2 + 2, sticky="w")
+        self.spread_dates()
+
         self.plate_info = ttk.Label(s, text="No plate loaded yet.",
                                     style="Muted.TLabel")
-        self.plate_info.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.plate_info.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
         return r + 1
+
+    def spread_dates(self):
+        """Day 1 typed -> the other two on the next working days."""
+        try:
+            start = datetime.datetime.strptime(self.date_var.get().strip(),
+                                               "%d.%m.%Y").date()
+        except ValueError:
+            return
+        days = ws_fill.working_days(start, len(ws_sheets.WORKSHEETS))
+        for (key, _, _n), d in zip(ws_sheets.WORKSHEETS, days):
+            self.date_vars[key].set(d.strftime("%d.%m.%Y"))
 
     def _sec_numbers(self, body, r):
         s = Section(body, 2, "Worksheet and storage numbers taken for this plate")
@@ -761,9 +786,12 @@ class PlateRunPanel(ttk.Frame):
         self.wb_btn.grid(row=0, column=1)
         ttk.Button(wb, text="Open", width=7, command=self.open_workbook).grid(
             row=0, column=2, padx=(6, 0))
-        ttk.Label(wb, text="- the Well / Sample ID / conc. sheet, colour coded, "
-                           "with the DBS and standard averages",
-                  style="Muted.TLabel").grid(row=0, column=3, padx=(10, 0))
+        self.stor_btn = ttk.Button(wb, text="Storage worksheets (x3)",
+                                   command=self.build_storage)
+        self.stor_btn.grid(row=0, column=3, padx=(16, 0))
+        ttk.Label(wb, text="- one GBL-WS-002 per storage number, with the "
+                           "coloured sample grid",
+                  style="Muted.TLabel").grid(row=0, column=4, padx=(10, 0))
 
         opts = ttk.Frame(s)
         opts.grid(row=3, column=0, columnspan=4, sticky="w", pady=(10, 0))
@@ -941,8 +969,16 @@ class PlateRunPanel(ttk.Frame):
         sols = ({} if self.skip_solutions.get()
                 else {k: v.get().strip() for k, v in self.sol_vars.items()
                       if v.get().strip()})
+        dates = {}
+        for key, _, _n in ws_sheets.WORKSHEETS:
+            raw = self.date_vars[key].get().strip()
+            try:
+                dates[key] = datetime.datetime.strptime(raw, "%d.%m.%Y").date()
+            except ValueError:
+                raise ValueError(f"The {key} date must look like 21.09.2026.")
         return {
             "lay": lay, "out": out, "aliquot": aliquot, "date": date,
+            "dates": dates,
             "batch": self.batch_var.get().strip(),
             "initials": self.initials_var.get().strip().upper(),
             "numbers": {k: v.get().strip() for k, v in self.num_vars.items()},
@@ -1070,7 +1106,7 @@ class PlateRunPanel(ttk.Frame):
             numbers=spec["numbers"], date=spec["date"], initials=spec["initials"],
             avg_conc=avg, aliquot_ul=spec["aliquot"], pages=keys,
             colours=self.colours, consumables=spec["consumables"],
-            solutions=spec["solutions"], log=self.app.say)
+            solutions=spec["solutions"], dates=spec["dates"], log=self.app.say)
 
     def build_isolation(self):
         try:
@@ -1150,6 +1186,42 @@ class PlateRunPanel(ttk.Frame):
             os.startfile(wb)
         except Exception as e:
             messagebox.showerror("Could not open it", str(e))
+
+    def build_storage(self):
+        """One GBL-WS-002 per storage number the plate took."""
+        try:
+            spec = self.gather()
+        except ValueError as e:
+            messagebox.showwarning("Not ready", str(e))
+            return
+        taken = [k for k, _ in ws_sheets.STORAGE if spec["numbers"].get(k)]
+        if not taken:
+            messagebox.showwarning(
+                "No storage numbers",
+                "Put the GBL-WS-002 storage numbers in first - one sheet is "
+                "produced per number.")
+            return
+
+        def work():
+            sources = ws_fill.discover(_norm(self.blank_var.get().strip()) or None)
+            if "storage" not in sources:
+                self.app.say("  !! no blank GBL-WS-002 found in the worksheets "
+                             "folder")
+                return
+            written = ws_fill.fill_storage_sheets(
+                sources["storage"], spec["out"], self.layout,
+                batch=spec["batch"], numbers=spec["numbers"],
+                date=spec["dates"].get("isolation") or spec["date"],
+                dates=spec["dates"], colours=self.colours, kinds=taken,
+                log=self.app.say)
+            self.app.say("")
+            self.app.say(f"Saved {len(written)} storage worksheet(s) into "
+                         f"{spec['out']}")
+            self.app.say("  the fridge/freezer letter and drawer are left blank "
+                         "- fill those in at the freezer")
+            self.note.config(text=f"Built {len(written)} storage worksheet(s)")
+
+        self.app.go(self.stor_btn, spec["out"], False, work)
 
     def build_day2(self):
         from igg_conc_gui import build, mean_concentrations

@@ -60,7 +60,41 @@ GRID_FONT, GRID_FONT_BOLD = _grid_fonts()
 WS_DIR = r"\\10.70.119.100\Glikobiologija\SOPs and WS\WSs"
 WS_CODES = {"isolation": "GBL-WS-031",
             "deglyco":   "GBL-WS-029",
-            "cleanup":   "GBL-WS-030"}
+            "cleanup":   "GBL-WS-030",
+            "storage":   "GBL-WS-002"}
+
+# One GBL-WS-002 per storage number a plate takes.  The sample type and the
+# packing are fixed by what is being stored, so they are ticked; the freezer
+# and drawer are the operator's choice at the freezer and are left blank.
+#
+# The last field is the day the material actually goes into storage, which is
+# not always day 1: the eluate and the dried IgG are both put away at the end
+# of the isolation, but the APTS-labelled glycans do not exist until the
+# clean-up on day 3.
+#   key         what it is on the sheet   Sample type   Packed in   stored on
+STORAGE_KINDS = {
+    "eluate":     ("IgG eluate", "IgG", "1 ml collection plat", "isolation"),
+    "dry_eluate": ("Dry IgG eluate", "IgG", "PCR plate", "isolation"),
+    "apts":       ("APTS labelled IgG N-glycans", "Labeled glycans",
+                   "Round collection plate", "cleanup"),
+}
+
+
+def working_days(start, n):
+    """-> n dates beginning at `start`, skipping Saturdays and Sundays.
+
+    A plate is three days of bench work - isolation, deglycosylation, clean
+    up - and each worksheet carries the date it was actually done.  Starting
+    an isolation on a Friday puts the other two on the Monday and Tuesday,
+    not on the weekend.
+    """
+    out, day = [], start
+    while len(out) < n:
+        while day.weekday() >= 5:            # 5 = Saturday, 6 = Sunday
+            day += datetime.timedelta(days=1)
+        out.append(day)
+        day += datetime.timedelta(days=1)
+    return out
 
 
 class FillError(Exception):
@@ -190,6 +224,68 @@ def find_label_box(items, rects, label, near_x=None):
         if best:
             return best[0] + 4, y
     return None
+
+
+def find_label_box_left(items, rects, label):
+    """-> (x, y) inside the answer box drawn to the LEFT of `label`, or None.
+
+    GBL-WS-002 puts the box before the wording - 'box  Sample reception
+    worksheet no.' - where every other worksheet puts it after.  Writing to
+    the right of the label there lands the value in open space beside an
+    empty box, which looks like nobody filled it in.
+    """
+    for y, parts in lines(items):
+        joined = squash(" ".join(p[2] for p in parts))
+        if squash(label) not in joined:
+            continue
+        left = parts[0][0]
+        best = None
+        for (bx, by, bw, bh) in rects:
+            if bx + bw > left + 2 or bw < 20:
+                continue
+            if not (by - 4 <= y <= by + bh + 2):
+                continue
+            if best is None or bx > best[0]:
+                best = (bx, by, bw, bh)
+        if best:
+            return best[0] + 5, y
+    return None
+
+
+def find_tickbox(items, rects, option):
+    """-> (x, y, w, h) of the tickbox belonging to `option`, or None.
+
+    On GBL-WS-002 the options sit in four columns with their box drawn just
+    to the left of the wording, so the box is found from the wording rather
+    than from a coordinate - a re-laid-out revision still ticks correctly.
+    """
+    target = squash(option)
+    for y, parts in lines(items):
+        for x, size, text in parts:
+            if squash(text) != target:
+                continue
+            best = None
+            for (bx, by, bw, bh) in rects:
+                if bw > 16 or bh > 18 or bx >= x:
+                    continue
+                if not (by - 3 <= y <= by + bh + 2):
+                    continue
+                if x - (bx + bw) > 30:       # too far left to belong to it
+                    continue
+                if best is None or bx > best[0]:
+                    best = (bx, by, bw, bh)
+            if best:
+                return best
+    return None
+
+
+def draw_tick(c, box):
+    """A tick inside `box`, in the same ink as everything else added."""
+    x, y, w, h = box
+    c.setLineWidth(1.4)
+    c.setStrokeColorRGB(*INK)
+    c.line(x + w * 0.22, y + h * 0.50, x + w * 0.44, y + h * 0.26)
+    c.line(x + w * 0.44, y + h * 0.26, x + w * 0.80, y + h * 0.76)
 
 
 def find_table_cell(items, row_label, col_label):
@@ -442,6 +538,8 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
                 items = page_items(page)
             if after == "box":
                 spot = find_label_box(items, page_rects(page, reader), label, near_x)
+            elif after == "box_left":
+                spot = find_label_box_left(items, page_rects(page, reader), label)
             else:
                 spot = find_label(items, label, near_x, after=after)
             if spot is None:
@@ -465,6 +563,18 @@ def fill_worksheet(pdf_path, out_path, spec, values, layout=None, colours=None,
             x, y = spot
             c.setFont(FONT, 8)
             c.drawString(x, y, str(val))
+            placed += 1
+            drew = True
+
+        for option in spec.get("ticks", {}).get(pno, []):
+            if items is None:
+                items = page_items(page)
+            box = find_tickbox(items, page_rects(page, reader), option)
+            if box is None:
+                missing.append(f"p{pno + 1} tickbox {option!r}")
+                continue
+            draw_tick(c, box)
+            c.setFillColorRGB(*INK)
             placed += 1
             drew = True
 
@@ -623,19 +733,74 @@ def _solution_spec(key, solutions, initials):
     return {page: out} if out else {}
 
 
+def fill_storage_sheets(source, out_dir, layout, batch="", numbers=None,
+                        date=None, labels=None, colours=None, kinds=None,
+                        dates=None, log=print):
+    """One filled GBL-WS-002 per storage number the plate took.
+
+    Fills what follows from the run: the storage number, the date, which IgG
+    isolation worksheet it belongs to, the sample reception number, and the
+    coloured 8x12 sample list.  The sample type and the packing are ticked
+    because they follow from what is being stored.
+
+    Left blank on purpose: the fridge/freezer letter and drawer number, which
+    are chosen standing at the freezer and are not knowable here.
+    """
+    numbers = numbers or {}
+    labels = labels or {}
+    date = date or datetime.date.today()
+    written = []
+
+    for key in (kinds or STORAGE_KINDS):
+        no = numbers.get(key)
+        if not no:
+            continue
+        what, sample_type, packed_in, stored_on = STORAGE_KINDS[key]
+        when = (dates or {}).get(stored_on) or date
+        spec = {
+            "grid_page": 0,
+            "fields": {0: [("No.", "no", None),
+                           ("Date:", "date", None),
+                           ("Sample label", "label", None)]},
+            # these two have their box drawn before the wording, not after
+            "consumables": {0: [
+                ("Lab worksheet no. (if applicable)", "isolation", None, "box_left"),
+                ("Sample reception worksheet no. (if applicable)", "reception",
+                 None, "box_left"),
+            ]},
+            "ticks": {0: [sample_type, packed_in]},
+        }
+        vals = {"no": no, "date": when.strftime("%d.%m.%Y"),
+                "isolation": numbers.get("isolation", ""),
+                "reception": numbers.get("reception", ""),
+                "label": labels.get(key, "")}
+        stem = f"{batch} " if batch else ""
+        out = os.path.join(out_dir, f"{stem}storage {no} - {what}.pdf")
+        log(f"Sample storage worksheet - {what}:")
+        fill_worksheet(source, out, spec, vals, layout, colours, log=log)
+        written.append(out)
+    return written
+
+
 def fill_all(sources, out_dir, layout, batch="", numbers=None, date=None,
              initials="", avg_conc=None, aliquot_ul=40.0, pages=None,
-             colours=None, consumables=None, solutions=None, log=print):
+             colours=None, consumables=None, solutions=None, dates=None,
+             log=print):
     """Fill each worksheet PDF given in `sources` -> [path]."""
     numbers = numbers or {}
     date = date or datetime.date.today()
-    wanted = set(pages or sources)
+    # Only the three process worksheets have a spec.  discover() also finds
+    # GBL-WS-002, which is filled separately by fill_storage_sheets(), so it
+    # must never fall into this loop - it did, and took the CLI down with a
+    # KeyError the moment --pages was left off.
+    wanted = set(pages or sources) & set(specs())
     written = []
     for key, src in sources.items():
         if key not in wanted or not src:
             continue
         spec = specs()[key]
-        vals = values_for(key, batch, numbers, date, initials,
+        when = (dates or {}).get(key) or date
+        vals = values_for(key, batch, numbers, when, initials,
                           avg_conc, aliquot_ul)
         vals.update({k: v for k, v in (consumables or {}).items() if v})
         spec["consumables"] = _consumable_spec(key)
