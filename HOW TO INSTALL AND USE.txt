@@ -23,7 +23,7 @@ WHAT IT IS
 
   1.  Open this folder in Explorer:
 
-        \\10.70.119.100\Glikobiologija\POPULATION DATA BASE\_tools\IgG Concentration Builder
+        \\10.70.119.100\Glikobiologija\Python programs\IgG Concentration Builder
 
   2.  Right-click on
 

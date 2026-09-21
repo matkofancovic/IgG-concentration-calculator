@@ -30,9 +30,11 @@ import time
 import datetime
 import tempfile
 
-# Beside the exe on the share, so the lab shares one list.
-SHARE_DIR = (r"\\10.70.119.100\Glikobiologija\POPULATION DATA BASE"
-             r"\_tools\IgG Concentration Builder")
+# Beside the exe on the share, so the lab shares one list.  Every program in
+# 'Python programs' has its own folder, and this one writes two json files
+# and keeps a 'previous' folder, so it keeps to that convention rather than
+# dropping loose files in among the other tools.
+SHARE_DIR = r"\\10.70.119.100\Glikobiologija\Python programs\IgG Concentration Builder"
 LOCAL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
                          "IgG Concentration Builder")
 
@@ -234,9 +236,15 @@ class Store:
         return self._read(CONSUMABLES_FILE)
 
     def current(self):
-        """-> {key: current value} for filling straight into a worksheet."""
+        """-> {key: current value} for filling straight into a worksheet.
+
+        Keys beginning '_' are the file's own sections (the solution library,
+        the Protein G counts) rather than consumables, so they are skipped -
+        otherwise they come back looking like a LOT number with no value.
+        """
         return {k: v.get("current", "")
-                for k, v in self.consumables().items() if isinstance(v, dict)}
+                for k, v in self.consumables().items()
+                if isinstance(v, dict) and not k.startswith("_")}
 
     def options(self, key):
         """-> [value] most recently used first, for the dropdown."""

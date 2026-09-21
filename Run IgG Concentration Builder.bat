@@ -13,7 +13,7 @@ REM    - it starts fast, and keeps working if the share is down
 REM ===================================================================
 
 REM ---- EDIT THIS ONE LINE: the folder holding the .exe on the share ----
-set "SHARE=\\10.70.119.100\Glikobiologija\POPULATION DATA BASE\_tools\IgG Concentration Builder"
+set "SHARE=\\10.70.119.100\Glikobiologija\Python programs\IgG Concentration Builder"
 REM ---------------------------------------------------------------------
 
 set "APP=IgG Concentration Builder.exe"
