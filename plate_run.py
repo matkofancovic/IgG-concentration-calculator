@@ -748,8 +748,25 @@ class PlateRunPanel(ttk.Frame):
         ttk.Button(day2, text="Open folder", command=self.open_folder).grid(
             row=0, column=4, padx=(6, 0))
 
+        # The concentration workbook on its own.  It used to have a tab of its
+        # own and folding it into the day-2 button took that away - you could
+        # no longer rebuild just the workbook without reprinting two
+        # worksheets.  This puts it back.
+        wb = ttk.Frame(s)
+        wb.grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Label(wb, text="Any time", width=8, style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w")
+        self.wb_btn = ttk.Button(wb, text="Concentration workbook only",
+                                 command=self.build_workbook)
+        self.wb_btn.grid(row=0, column=1)
+        ttk.Button(wb, text="Open", width=7, command=self.open_workbook).grid(
+            row=0, column=2, padx=(6, 0))
+        ttk.Label(wb, text="- the Well / Sample ID / conc. sheet, colour coded, "
+                           "with the DBS and standard averages",
+                  style="Muted.TLabel").grid(row=0, column=3, padx=(10, 0))
+
         opts = ttk.Frame(s)
-        opts.grid(row=2, column=0, columnspan=4, sticky="w", pady=(10, 0))
+        opts.grid(row=3, column=0, columnspan=4, sticky="w", pady=(10, 0))
         ttk.Checkbutton(opts, text="Stop if the layout does not match the readings",
                         variable=self.strict_var).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(opts, text="Separate sheet to attach, instead of filling "
@@ -757,7 +774,7 @@ class PlateRunPanel(ttk.Frame):
                         variable=self.attach_var).grid(row=1, column=0, sticky="w")
 
         self.note = ttk.Label(s, text="", style="Muted.TLabel")
-        self.note.grid(row=3, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        self.note.grid(row=4, column=0, columnspan=4, sticky="w", pady=(8, 0))
         return r + 1
 
     def _sec_settings(self, body, r):
@@ -1084,6 +1101,55 @@ class PlateRunPanel(ttk.Frame):
                              if written else "")
 
         self.app.go(self.iso_btn, spec["out"], False, work)
+
+    def workbook_path(self, spec=None):
+        out = _norm((spec or {}).get("out") or self.out_var.get().strip())
+        batch = (spec or {}).get("batch") or self.batch_var.get().strip()
+        return os.path.join(out, f"{batch or 'plate'}.xlsx") if out else ""
+
+    def build_workbook(self):
+        """The concentration workbook on its own, without the worksheets."""
+        from igg_conc_gui import build
+        try:
+            spec = self.gather()
+        except ValueError as e:
+            messagebox.showwarning("Not ready", str(e))
+            return
+        txt = _norm(self.txt_var.get().strip())
+        if not txt or not os.path.isfile(txt):
+            messagebox.showwarning(
+                "NanoDrop file",
+                "Pick the NanoDrop .txt for this plate - the workbook is built "
+                "from it.")
+            return
+        wb = self.workbook_path(spec)
+        if os.path.exists(wb) and not messagebox.askyesno(
+                "Overwrite?",
+                os.path.basename(wb) + " already exists.\n\nOverwrite it?"):
+            return
+
+        def work():
+            build(txt, spec["lay"], wb, strict=self.strict_var.get(),
+                  log=self.app.say)
+            self.built["workbook"] = wb
+            self.save_state()
+            self.app.say("")
+            self.app.say(f"Saved {os.path.basename(wb)} into {spec['out']}")
+            self.note.config(text=f"Built {os.path.basename(wb)}")
+
+        self.app.go(self.wb_btn, wb, False, work)
+
+    def open_workbook(self):
+        wb = self.workbook_path()
+        if not wb or not os.path.isfile(wb):
+            messagebox.showinfo("Not built yet",
+                                "The concentration workbook is not in the save "
+                                "folder yet.")
+            return
+        try:
+            os.startfile(wb)
+        except Exception as e:
+            messagebox.showerror("Could not open it", str(e))
 
     def build_day2(self):
         from igg_conc_gui import build, mean_concentrations

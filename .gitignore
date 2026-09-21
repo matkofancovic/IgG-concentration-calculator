@@ -17,6 +17,7 @@ venv/
 *.xlsm
 *.csv
 !requirements.txt
+!HOW TO INSTALL AND USE.txt
 
 # --- Excel lock files ---
 ~$*

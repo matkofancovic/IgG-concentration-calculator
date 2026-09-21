@@ -119,11 +119,16 @@ SOLUTION_RECIPE = {
     "Biogel P10 slurry": [
         (200, "well", "step 2 load the wwPTFE plate"),
     ],
+    # 'Repeat this step twice' is read as twice in total, which is how the
+    # same worksheet uses 'Repeat this step 4 times' for the ACN/TEA wash.
+    # The 100 uL inside the 106 uL transfer is the ACN added at step 1 and is
+    # deliberately not counted a second time.
     "80 % ACN": [
         (100, "well", "step 1 stop the labelling reaction"),
-        (200, "well", "step 2 pre-conditioning wash x2"),
-        (200, "well", "step 2 pre-conditioning wash x2"),
-        (200, "well", "step 3 clean-up wash"),
+        (200, "well", "step 2 pre-conditioning wash, twice"),
+        (200, "well", "step 2 pre-conditioning wash, twice"),
+        (200, "well", "step 3 clean-up wash, twice"),
+        (200, "well", "step 3 clean-up wash, twice"),
     ],
     "80% ACN / 100mM TEA": [
         (200, "well", "step 3 wash x4"),

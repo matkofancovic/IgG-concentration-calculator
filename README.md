@@ -147,8 +147,14 @@ SOP:
 
     1x PBS               800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
     1xPBS (0,25M NaCl)  4000 uL/well x 96 = 384.00 mL, +20% = 460.8 mL
+    80% ACN              900 uL/well x 96 = 86.40 mL, +20% = 103.68 mL
     80% ACN / 100mM TEA  800 uL/well x 96 = 76.80 mL, +20% = 92.16 mL
     30mM APTS            230 uL/plate = 0.23 mL, +20% = 0.28 mL
+
+`Repeat this step twice` is read as twice in total, matching the way the same
+worksheet writes `Repeat this step 4 times` for the ACN/TEA wash. The 100 uL
+of ACN inside the 106 uL transfer is the ACN added when the labelling
+reaction was stopped, and is not counted a second time.
 
 A figure someone sets by hand always wins over the calculated one. If the
 SOP changes, edit the recipe - the steps are written out so it is obvious
@@ -278,6 +284,13 @@ on the plate, and nothing downstream would notice.
 
 If the check fails the workbook is **not** written and the report says why.
 Untick *Stop if the layout does not match the readings* to override.
+
+## For the analysts
+
+`HOW TO INSTALL AND USE.txt` sits next to the exe on the share and is written
+for someone who just wants to use it: how to make the shortcut, what the
+SmartScreen box is, and - the question everyone asks - how one person's LOT
+number or solution batch reaches everybody else.
 
 ## Running it
 

@@ -1,0 +1,151 @@
+===========================================================================
+  GlycanAge plate run  -  how to install it and how the sharing works
+===========================================================================
+
+WHAT IT IS
+
+  One program for a GlycanAge plate's paperwork.  You give it two files -
+  the Pippeting List and the NanoDrop .txt - and it produces:
+
+    - the concentration workbook (Well / Sample ID / conc., colour coded,
+      with the DBS and standard averages)
+    - the IgG isolation worksheet, filled in, with the real coloured plate
+      layout printed on it
+    - the deglycosylation and clean-up worksheets, filled in
+
+
+---------------------------------------------------------------------------
+  INSTALLING IT  -  once per PC, takes a minute
+---------------------------------------------------------------------------
+
+  There is nothing to install.  You make a shortcut to a file on the
+  Glikobiologija share and that is it.
+
+  1.  Open this folder in Explorer:
+
+        \\10.70.119.100\Glikobiologija\POPULATION DATA BASE\_tools\IgG Concentration Builder
+
+  2.  Right-click on
+
+        Run IgG Concentration Builder.bat
+
+      and choose  "Send to"  ->  "Desktop (create shortcut)".
+
+  3.  Double-click that shortcut on your desktop.  That is the program.
+
+  IMPORTANT:  make the shortcut to the .bat file, NOT to the .exe.
+  The .bat is what keeps you up to date - it checks the share each time you
+  start it and copies the newest version to your own PC before running it.
+  If you shortcut the .exe you will be stuck on whatever version you copied.
+
+  THE FIRST TIME ONLY, Windows may show a blue box saying
+  "Windows protected your PC".  That is because the program is not signed,
+  not because anything is wrong.  Click  "More info"  ->  "Run anyway".
+  It will not ask again on that PC.
+
+  If your antivirus blocks it instead, send the folder path to IT and ask
+  them to allow it.
+
+
+---------------------------------------------------------------------------
+  HOW THE SHARING WORKS  -  "if I do something, how do the others see it?"
+---------------------------------------------------------------------------
+
+  Everything the program remembers is kept in two small files in that same
+  share folder, NOT on your PC:
+
+        consumables.json     the LOT numbers and the solution library
+        runs.json            which plate got how far
+
+  So there is nothing to send anyone.  You record something, they open the
+  program, they see it.  Concretely:
+
+  *  YOU OPEN A NEW wwPTFE PLATE and type its LOT number.
+     The next person to open the program is offered that LOT as the current
+     one, already filled in.  The old LOTs stay in the drop-down.
+
+  *  YOU MAKE A SOLUTION and press "I made a batch..." (date, how many mL,
+     your initials).
+     Everyone now sees that batch, how much is left, and how many more
+     plates it covers.  When someone runs a plate, the program subtracts
+     one plate's worth automatically.
+
+  *  YOU USE A PROTEIN G PLATE.
+     The program counts it.  Nobody types "how many times has this plate
+     been used" any more - it knows, across all of you, because the count
+     is on the share.
+
+  *  YOU ENTER THE WORKSHEET NUMBERS for a plate on day 1.
+     On day 2, on any PC, click that plate in the list on the left and
+     everything you typed comes back.  It does not have to be the same
+     person or the same computer.
+
+  WHEN DOES IT UPDATE?
+     The list refreshes when you open the program, and after you build
+     something.  There is a "Refresh" button under the solution library if
+     you want to pull in what somebody just did while you had it open.
+
+  IF TWO OF YOU SAVE AT THE SAME MOMENT
+     Nothing breaks.  Each save re-reads the file and merges into it, so
+     the worst that can happen is one edit is lost, never a broken file.
+
+  IF THE SHARE IS DOWN
+     The program still works.  It keeps its notes on your own PC for the
+     time being and says so at the bottom of the window.  Those notes stay
+     on that PC though - they do not get pushed to the share afterwards.
+
+
+---------------------------------------------------------------------------
+  USING IT  -  a normal plate
+---------------------------------------------------------------------------
+
+  DAY 1
+   1.  "New plate..." (left) and pick the plate's Pippeting List.
+   2.  Type the first worksheet number, press "Fill down" - the rest follow
+       in order.  Same for the storage numbers.
+   3.  Check the filter plate LOT and the Protein G plate number that are
+       offered.  CHECK THEM AGAINST THE LABEL IN FRONT OF YOU - the program
+       offers what was used last, which is a convenience, not proof.
+   4.  Press "IgG isolation worksheet", then "Print".
+   5.  Go and do the isolation.
+
+  DAY 2
+   6.  Open the program, click the plate in the list on the left.
+       Everything from day 1 comes back.
+   7.  Put the NanoDrop .txt in.
+   8.  Press "Workbook + deglyco + clean up".
+
+  ANY TIME
+   *  "Concentration workbook only" builds just the spreadsheet, without
+      touching the worksheets.
+   *  Nothing is ever locked.  Every button can be pressed again, in any
+      order, as many times as you like.  Building something twice does not
+      double-count the solutions or the Protein G plate.
+
+  ANYTHING YOU LEAVE EMPTY PRINTS EMPTY, so you can always fill a field in
+  by hand instead.
+
+
+---------------------------------------------------------------------------
+  THE PLATE LIST DOWN THE LEFT
+---------------------------------------------------------------------------
+
+        (tick)   all three worksheets built
+        (half)   part way through
+        (dot)    nothing built yet
+
+  "Remove" only makes the program forget a plate.  It never deletes any
+  worksheet or workbook you have already saved.
+
+
+---------------------------------------------------------------------------
+  WHO TO ASK
+---------------------------------------------------------------------------
+
+  Something looks wrong on a printed worksheet, or a number is not what you
+  expect:  check the Report box at the bottom of the window first.  It says
+  what it filled in and, more usefully, what it could NOT find.
+
+  The amounts of solution per plate are worked out from the worksheets
+  themselves.  Press "Where does (calc) come from?" and it prints the sum
+  for every solution into the Report so you can check it against the SOP.
