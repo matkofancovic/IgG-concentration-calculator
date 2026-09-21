@@ -79,6 +79,15 @@ so and Browse relinks it.
 
 ### Dates - one per day of the process
 
+Click a date box or its calendar button and a month opens **on the date
+already in the box**, with that day selected, so the common case is one
+click. Weeks start on Monday, weekends are greyed, *Today* jumps to today.
+
+The calendar is written into `plate_run.py` rather than pulled in: tkcalendar
+would drag in babel for the sake of one month grid, and this way it is in the
+same green and orange as the rest.
+
+
 A plate is three days of bench work, and each worksheet carries the date it
 was actually done. Type **Day 1 (isolation)** and the other two follow on the
 next *working* days - an isolation started on a Friday puts the

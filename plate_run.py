@@ -227,6 +227,155 @@ class AccentButton(tk.Button):
         return ()
 
 
+class CalendarPopup(tk.Toplevel):
+    """A month grid that opens on whatever date is already in the box.
+
+    Written here rather than pulled in: tkcalendar drags in babel, and this
+    way the calendar is in the same green and orange as everything else.
+
+    Weeks start on Monday, which is how the lab writes a date.
+    """
+
+    def __init__(self, entry, var, on_pick=None):
+        super().__init__(entry.winfo_toplevel())
+        self.var, self.on_pick = var, on_pick or (lambda: None)
+        self.overrideredirect(True)          # a popup, not a window
+        self.configure(background=GREEN, padx=1, pady=1)
+
+        # open on the date in the box, or today if it is empty or unreadable
+        try:
+            self.shown = datetime.datetime.strptime(var.get().strip(),
+                                                    "%d.%m.%Y").date()
+        except ValueError:
+            self.shown = datetime.date.today()
+        self.picked = self.shown
+
+        body = tk.Frame(self, background=CARD, padx=10, pady=10)
+        body.pack(fill="both", expand=True)
+
+        head = tk.Frame(body, background=CARD)
+        head.pack(fill="x")
+        tk.Button(head, text="‹", command=lambda: self.step(-1), bd=0,
+                  relief="flat", background=CARD, foreground=GREEN,
+                  activebackground=TINT, font=(FONT, 13, "bold"),
+                  cursor="hand2", width=2).pack(side="left")
+        self.title_lbl = tk.Label(head, background=CARD, foreground=GREEN,
+                                  font=(FONT, 11, "bold"), width=16)
+        self.title_lbl.pack(side="left", expand=True)
+        tk.Button(head, text="›", command=lambda: self.step(1), bd=0,
+                  relief="flat", background=CARD, foreground=GREEN,
+                  activebackground=TINT, font=(FONT, 13, "bold"),
+                  cursor="hand2", width=2).pack(side="right")
+
+        self.grid_frame = tk.Frame(body, background=CARD)
+        self.grid_frame.pack(pady=(8, 4))
+
+        foot = tk.Frame(body, background=CARD)
+        foot.pack(fill="x", pady=(6, 0))
+        tk.Button(foot, text="Today", command=self.today, bd=0, relief="flat",
+                  background=TINT, foreground=GREEN, activebackground=GREEN_SOFT,
+                  font=(FONT, 9), cursor="hand2", padx=10, pady=3).pack(side="left")
+        tk.Button(foot, text="Cancel", command=self.close, bd=0, relief="flat",
+                  background=CARD, foreground=MUTED, activebackground=TINT,
+                  font=(FONT, 9), cursor="hand2", padx=10, pady=3).pack(side="right")
+
+        self.draw()
+        self.place_under(entry)
+        self.grab_set()
+        self.bind("<Escape>", lambda _: self.close())
+        self.bind("<FocusOut>", lambda _: None)
+
+    # -- behaviour ---------------------------------------------------------
+
+    def step(self, months):
+        y, m = self.shown.year, self.shown.month + months
+        y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+        self.shown = self.shown.replace(year=y, month=m, day=1)
+        self.draw()
+
+    def today(self):
+        self.choose(datetime.date.today())
+
+    def choose(self, day):
+        self.var.set(day.strftime("%d.%m.%Y"))
+        self.close()
+        self.on_pick()
+
+    def close(self):
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def place_under(self, widget):
+        """Below the box it belongs to, nudged back on screen if it would fall
+        off the bottom or the right."""
+        self.update_idletasks()
+        x = widget.winfo_rootx()
+        y = widget.winfo_rooty() + widget.winfo_height() + 2
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        x = max(0, min(x, self.winfo_screenwidth() - w - 8))
+        if y + h > self.winfo_screenheight() - 40:
+            y = widget.winfo_rooty() - h - 2
+        self.geometry(f"+{x}+{y}")
+
+    # -- drawing -----------------------------------------------------------
+
+    def draw(self):
+        import calendar
+        for child in self.grid_frame.winfo_children():
+            child.destroy()
+        self.title_lbl.configure(
+            text=f"{calendar.month_name[self.shown.month]} {self.shown.year}")
+
+        for i, day in enumerate(("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")):
+            tk.Label(self.grid_frame, text=day, background=CARD,
+                     foreground=MUTED if i < 5 else GREEN_SOFT,
+                     font=(FONT, 9, "bold"), width=4).grid(row=0, column=i,
+                                                           pady=(0, 4))
+
+        today = datetime.date.today()
+        weeks = calendar.Calendar(firstweekday=0).monthdatescalendar(
+            self.shown.year, self.shown.month)
+        for r, week in enumerate(weeks, start=1):
+            for c, day in enumerate(week):
+                if day.month != self.shown.month:
+                    tk.Label(self.grid_frame, text="", background=CARD,
+                             width=4).grid(row=r, column=c)
+                    continue
+                selected = day == self.picked
+                bg = ORANGE if selected else CARD
+                fg = "#FFFFFF" if selected else (
+                    GREEN if c < 5 else MUTED)          # weekends greyed
+                b = tk.Button(self.grid_frame, text=str(day.day), width=4, bd=0,
+                              relief="flat", cursor="hand2", background=bg,
+                              foreground=fg, activebackground=GREEN_SOFT,
+                              font=(FONT, 10, "bold" if selected else "normal"),
+                              command=lambda d=day: self.choose(d))
+                b.grid(row=r, column=c, padx=1, pady=1)
+                if day == today and not selected:
+                    b.configure(highlightthickness=1,
+                                highlightbackground=GREEN_SOFT, foreground=GREEN)
+
+
+def date_field(parent, row, label, var, col=0, on_pick=None):
+    """A date box with a calendar button, opening on the date already in it."""
+    ttk.Label(parent, text=label, style="Card.TLabel").grid(
+        row=row, column=col, sticky="w", pady=4, padx=(0, 10))
+    holder = ttk.Frame(parent, style="Card.TFrame")
+    holder.grid(row=row, column=col + 1, sticky="w", pady=4)
+    e = ttk.Entry(holder, textvariable=var, width=12)
+    e.grid(row=0, column=0)
+    tk.Button(holder, text="📅", bd=0, relief="flat", cursor="hand2",
+              background=TINT, foreground=GREEN, activebackground=GREEN_SOFT,
+              font=(FONT, 10), padx=6,
+              command=lambda: CalendarPopup(e, var, on_pick)).grid(
+        row=0, column=1, padx=(4, 0))
+    e.bind("<Button-1>", lambda _: CalendarPopup(e, var, on_pick))
+    return e
+
+
 class StepRail(tk.Frame):
     """The four steps across the top - one panel visible at a time."""
 
@@ -526,8 +675,8 @@ class PlateRunPanel(tk.Frame):
         field(d.body, 1, "Aliquot dried down", self.aliquot_var, 8, col=3,
               unit="µL")
         for i, (key, _, name) in enumerate(ws_sheets.WORKSHEETS):
-            field(d.body, 1 + i, f"Day {i + 1}  -  {name}",
-                  self.date_vars[key], 14)
+            date_field(d.body, 1 + i, f"Day {i + 1}  -  {name}",
+                       self.date_vars[key])
         self.spread_dates()
 
         self.plate_info = ttk.Label(wrap, text="No plate loaded yet.",
